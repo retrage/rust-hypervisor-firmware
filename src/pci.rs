@@ -390,29 +390,79 @@ pub enum AhciIoPortError {
 
 #[derive(Default)]
 pub struct AhciIoPort {
-    port_region: mem::MemoryRegion,
+    port: mem::MemoryRegion,
     index: usize,
+    link: bool,
 }
 
 impl AhciIoPort {
     pub fn init(&mut self) -> Result<(), AhciIoPortError> {
-        let status = self.port_region.io_read_u32(PORT_SCR_STAT);
-        log!("Port {} status: {:x}", self.index, status);
+        let status = self.port.io_read_u32(PORT_SCR_STAT);
+        if (status & 0x0f) != 0x03 {
+            return Err(AhciIoPortError::NoLink);
+        }
+        let mut port_cmd = self.port.io_read_u32(PORT_CMD);
+        let port_cmd_bits =
+            PORT_CMD_LIST_ON | PORT_CMD_FIS_ON |
+            PORT_CMD_FIS_RX | PORT_CMD_START;
+        if port_cmd & port_cmd_bits != 0 {
+            log!("Port {} is active. Deactivating.", self.index);
+            port_cmd &= !port_cmd_bits;
+            self.port.io_write_u32(PORT_CMD, port_cmd);
+            self.port.io_read_u32(PORT_CMD);
+            unsafe { delay::mdelay(500); }
+        }
+        port_cmd = PORT_CMD_SPIN_UP | PORT_CMD_FIS_RX;
+        self.port.io_write_u32(PORT_CMD, port_cmd);
+        if delay::wait_while(4, || {
+            let ssts = self.port.io_read_u32(PORT_SCR_STAT);
+            ssts & 0x0f != 0x03
+        }) != false {
+            return Err(AhciIoPortError::Timeout);
+        }
+        let scr_err = self.port.io_read_u32(PORT_SCR_ERR);
+        if scr_err != 0 {
+            self.port.io_write_u32(PORT_SCR_ERR, scr_err);
+        }
+        if delay::wait_while(10000, || {
+            let tf_data = self.port.io_read_u32(PORT_TFDATA);
+            tf_data & (ATA_STAT_BUSY | ATA_STAT_DRQ) != 0
+        }) != false {
+            return Err(AhciIoPortError::Timeout);
+        }
+        let scr_err = self.port.io_read_u32(PORT_SCR_ERR);
+        if scr_err != 0 {
+            self.port.io_write_u32(PORT_SCR_ERR, scr_err);
+        }
+        let irq_stat = self.port.io_read_u32(PORT_IRQ_STAT);
+        if irq_stat != 0 {
+            self.port.io_write_u32(PORT_IRQ_STAT, irq_stat);
+        }
+        self.port.io_write_u32(PORT_IRQ_MASK, DEF_PORT_IRQ);
+        let status = self.port.io_read_u32(PORT_SCR_STAT);
+        if (status & 0x0f) != 0x03 {
+            return Err(AhciIoPortError::NoLink);
+        }
+        self.link = true;
+        Ok(())
+    }
+    pub fn start(&mut self) -> Result<(), AhciIoPortError> {
+        let status = self.port.io_read_u32(PORT_SCR_STAT);
         if (status & 0x0f) != 0x03 {
             return Err(AhciIoPortError::NoLink);
         }
         unsafe {
             let cmd_slot: *const AhciCommandHeader = &AHCI_PORT_DMA.cmd_slot;
-            self.port_region.io_write_u32(PORT_LST_ADDR, cmd_slot as u32);
-            self.port_region.io_write_u32(PORT_LST_ADDR_HI, 0);
+            self.port.io_write_u32(PORT_LST_ADDR, cmd_slot as u32);
+            self.port.io_write_u32(PORT_LST_ADDR_HI, 0);
             let rx_fis: *const [u8; 0x100] = &AHCI_PORT_DMA.rx_fis;
-            self.port_region.io_write_u32(PORT_FIS_ADDR, rx_fis as u32);
-            self.port_region.io_write_u32(PORT_FIS_ADDR_HI, 0);
+            self.port.io_write_u32(PORT_FIS_ADDR, rx_fis as u32);
+            self.port.io_write_u32(PORT_FIS_ADDR_HI, 0);
         }
-        self.port_region.io_write_u32(PORT_CMD,
-                                      PORT_CMD_ICC_ACTIVE | PORT_CMD_FIS_RX |
-                                      PORT_CMD_POWER_ON | PORT_CMD_SPIN_UP |
-                                      PORT_CMD_START);
+        self.port.io_write_u32(PORT_CMD,
+                               PORT_CMD_ICC_ACTIVE | PORT_CMD_FIS_RX |
+                               PORT_CMD_POWER_ON | PORT_CMD_SPIN_UP |
+                               PORT_CMD_START);
         Ok(())
     }
     fn fill_sg(&mut self, buf: &mut [u8]) -> Result<usize, AhciIoPortError> {
@@ -464,7 +514,7 @@ impl AhciIoPort {
     }
     fn device_data_io(&mut self, fis: &[u8], buf: &mut [u8], is_write: bool)
         -> Result<(), AhciIoPortError> {
-        let status = self.port_region.io_read_u32(PORT_SCR_STAT);
+        let status = self.port.io_read_u32(PORT_SCR_STAT);
         if (status & 0x0f) != 0x03 {
             return Err(AhciIoPortError::NoLink);
         }
@@ -477,10 +527,10 @@ impl AhciIoPort {
                       | ((sg_count as u32) << 16)
                       | ((is_write as u32) << 6);
         unsafe { self.fill_cmd_slot(opts); }
-        self.port_region.io_write_u32(PORT_CMD_ISSUE, 1);
+        self.port.io_write_u32(PORT_CMD_ISSUE, 1);
         const DATAIO_WAIT_US: u64 = 5000 * 1000;
         if delay::wait_while(DATAIO_WAIT_US, || {
-            self.port_region.io_read_u32(PORT_CMD_ISSUE) & 0x1 != 0
+            self.port.io_read_u32(PORT_CMD_ISSUE) & 0x1 != 0
         }) != false {
             return Err(AhciIoPortError::Timeout);
         }
@@ -535,7 +585,6 @@ pub struct AhciController {
     region: mem::MemoryRegion,
     cap: u32,
     port_map: u32,
-    link_port_map: u32,
 }
 
 impl AhciController {
@@ -545,17 +594,14 @@ impl AhciController {
             ..Default::default()
         }
     }
-    pub fn init(&mut self) {
+    pub fn init(&mut self) -> Result<(), &str> {
         self.device.init();
+
         let mmio_base = self.device.read_resource(5);
         if mmio_base == 0xffffffff {
-            log!("Invalid AHCI MMIO base");
-            return;
+            return Err("Invalid MMIO base");
         }
-        log!("AHCI MMIO base: {:x}", mmio_base);
-        self.region = mem::MemoryRegion::new(
-            u64::from(self.device.read_resource(5)),
-            0x2c);
+        self.region = mem::MemoryRegion::new(u64::from(mmio_base), 0x2c);
         let mut cap_save = self.region.io_read_u32(HOST_CAP);
         cap_save &= (1 << 28) | (1 << 17);
         cap_save |= 1 << 27;
@@ -566,123 +612,45 @@ impl AhciController {
             self.region.io_write_u32(HOST_CTL, ctl | HOST_RESET);
             self.region.io_read_u32(HOST_CTL);
         }
-        while self.region.io_read_u32(HOST_CTL) & HOST_RESET != 0 {
-            // TODO: timeout 1 second.
+        if delay::wait_while(1000, || {
+            self.region.io_read_u32(HOST_CTL) & HOST_RESET != 0
+        }) != false {
+            return Err("Timeout");
         }
         self.region.io_write_u32(HOST_CTL, HOST_AHCI_EN);
-        //self.region.io_read_u32(HOST_CTL);
         self.region.io_write_u32(HOST_CAP, cap_save);
         self.region.io_write_u32(HOST_PORTS_IMPL, 0xf);
-        //self.region.io_read_u32(HOST_PORTS_IMPL);
 
         self.cap = self.region.io_read_u32(HOST_CAP);
         self.port_map = self.region.io_read_u32(HOST_PORTS_IMPL);
-        let mut port_map = self.port_map;
-        while port_map != 0 {
-            self.n_ports += 1;
-            port_map >>= 1;
-        }
+        self.n_ports = self.port_map.count_ones();
         log!("cap: {:x} port_map: {:x} n_ports: {:x}",
              self.cap, self.port_map, self.n_ports);
         for i in 0..AHCI_MAX_PORTS {
             if self.port_map & (1 << i) == 0 { continue; }
-            self.ports[i].port_region = mem::MemoryRegion::new(
+            self.ports[i].port = mem::MemoryRegion::new(
                 u64::from(mmio_base) + 0x100 + (i as u64) * 0x80,
                 0x80);
             self.ports[i].index = i;
-            // XXX: check SSTS.DET to device detect.
-            let ssts = self.ports[i].port_region.io_read_u32(PORT_SCR_STAT);
-            if (ssts & 0x0f) as u8 != 0x03 { continue; }
-            // TODO: set cmd_addr, scr_addr
-            let mut port_cmd = self.ports[i].port_region.io_read_u32(PORT_CMD);
-            let port_cmd_bits =
-                PORT_CMD_LIST_ON | PORT_CMD_FIS_ON |
-                PORT_CMD_FIS_RX | PORT_CMD_START;
-            if port_cmd & port_cmd_bits != 0 {
-                log!("Port {} is active. Deactivating.", i);
-                port_cmd &= !port_cmd_bits;
-                self.ports[i].port_region.io_write_u32(PORT_CMD, port_cmd);
-                self.ports[i].port_region.io_read_u32(PORT_CMD);
-                unsafe { delay::mdelay(500); }
-            }
-            port_cmd = PORT_CMD_SPIN_UP | PORT_CMD_FIS_RX;
-            self.ports[i].port_region.io_write_u32(PORT_CMD, port_cmd);
-            //self.ports[i].port_region.io_read_u32(PORT_CMD);
-            if delay::wait_while(4, || {
-                let ssts = self.ports[i].port_region.io_read_u32(PORT_SCR_STAT);
-                ssts & 0x0f != 0x03
-            }) != false {
-                log!("SATA link {} timeout.", i);
-                continue;
-            } else {
-                log!("SATA link {} ok.", i);
-            }
-            let serr = self.ports[i].port_region.io_read_u32(PORT_SCR_ERR);
-            if serr != 0 {
-                self.ports[i].port_region.io_write_u32(PORT_SCR_ERR, serr);
-            }
-            log!("Waiting for device on port {}...", i);
-            if delay::wait_while(10000, || {
-                let tfd = self.ports[i].port_region.io_read_u32(PORT_TFDATA);
-                tfd & (ATA_STAT_BUSY | ATA_STAT_DRQ) != 0
-            }) != false {
-                log!("timeout.");
-            }
-            let serr = self.ports[i].port_region.io_read_u32(PORT_SCR_ERR);
-            if serr != 0 {
-                log!("SERR: {:x}", serr);
-                self.ports[i].port_region.io_write_u32(PORT_SCR_ERR, serr);
-            }
-            let is = self.ports[i].port_region.io_read_u32(PORT_IRQ_STAT);
-            if is != 0 {
-                log!("IS: {:x}", is);
-                self.ports[i].port_region.io_write_u32(PORT_IRQ_STAT, is);
-            }
-            self.region.io_write_u32(HOST_IRQ_STAT, 1 << i);
-            self.ports[i].port_region.io_write_u32(PORT_IRQ_MASK, DEF_PORT_IRQ);
-            let ssts = self.ports[i].port_region.io_read_u32(PORT_SCR_STAT);
-            log!("Port {} status: {:x}", i, ssts);
-            if (ssts & 0x0f) == 0x03 {
-                self.link_port_map |= 0x01 << i;
+
+            if self.ports[i].init().is_ok() == true {
+                self.region.io_write_u32(HOST_IRQ_STAT, 1 << i);
             }
         }
         let ctl = self.region.io_read_u32(HOST_CTL);
         self.region.io_write_u32(HOST_CTL, ctl);
-        let ctl = self.region.io_read_u32(HOST_CTL);
-        log!("Host CTL: {:x}", ctl);
         // TODO: use read_u16/write_u16
         let command = self.device.read_u32(0x4);
         self.device.write_u32(0x4, command | 0x4);
-        for i in 0..self.link_port_map as usize {
-            if (self.link_port_map >> i) & 0x01 != 0 {
-                self.ports[i].init();
-                let cap = self.ports[i].get_capacity().unwrap();
-                log!("Port {} capacity: 0x{:x}", i, cap);
-                let mut buf: [u8; 512] = [0; 512];
-                if self.ports[i].read(0, &mut buf).is_ok() == true {
-                    for j in 0..32 {
-                        log!("{:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
-                             buf[16 * j + 0],
-                             buf[16 * j + 1],
-                             buf[16 * j + 2],
-                             buf[16 * j + 3],
-                             buf[16 * j + 4],
-                             buf[16 * j + 5],
-                             buf[16 * j + 6],
-                             buf[16 * j + 7],
-                             buf[16 * j + 8],
-                             buf[16 * j + 9],
-                             buf[16 * j + 10],
-                             buf[16 * j + 11],
-                             buf[16 * j + 12],
-                             buf[16 * j + 13],
-                             buf[16 * j + 14],
-                             buf[16 * j + 15],
-                             );
-                    }
-                }
-            }
+        for i in 0..AHCI_MAX_PORTS {
+            if self.ports[i].link != true { continue; }
+            if self.ports[i].start().is_ok() != true { continue; }
+            let cap = self.ports[i].get_capacity().unwrap();
+            log!("Port {} capacity: 0x{:x}", i, cap);
+            let mut buf: [u8; 512] = [0; 512];
+            self.ports[i].read(0, &mut buf);
         }
+        Ok(())
     }
 }
 
