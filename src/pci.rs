@@ -93,6 +93,11 @@ fn get_device_details(bus: u8, device: u8, func: u8) -> (u16, u16) {
     ((data & 0xffff) as u16, (data >> 16) as u16)
 }
 
+fn get_device_classes(bus: u8, device: u8, func: u8) -> (u8, u8) {
+    let data = PCI_CONFIG.borrow_mut().read(bus, device, func, 8);
+    ((data >> 24) as u8, ((data >> 16) & 0xff) as u8)
+}
+
 pub fn print_bus() {
     for device in 0..MAX_DEVICES {
         let (vendor_id, device_id) = get_device_details(0, device, 0);
@@ -116,6 +121,21 @@ where
         let (vendor_id, device_id) = get_device_details(0, device, 0);
         if vendor_id == target_vendor_id
             && device_id == target_device_id
+            && per_device(PciDevice::new(0, device, 0))
+        {
+            break;
+        }
+    }
+}
+
+pub fn with_class<F>(target_class_id: u8, target_subclass_id: u8, per_device: F)
+where
+    F: Fn(PciDevice) -> bool,
+{
+    for device in 0..MAX_DEVICES {
+        let (class_id, subclass_id) = get_device_classes(0, device, 0);
+        if class_id == target_class_id
+            && subclass_id == target_subclass_id
             && per_device(PciDevice::new(0, device, 0))
         {
             break;
