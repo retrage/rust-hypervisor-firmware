@@ -36,6 +36,7 @@ mod asm;
 mod block;
 mod boot;
 mod bzimage;
+mod delay;
 mod efi;
 mod fat;
 mod gdt;

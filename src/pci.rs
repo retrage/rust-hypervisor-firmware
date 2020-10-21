@@ -15,10 +15,8 @@
 use atomic_refcell::AtomicRefCell;
 use x86_64::instructions::port::{Port, PortWriteOnly};
 
-#[cfg(target_arch = "x86_64")]
-use core::arch::x86_64::_rdtsc;
-
 use crate::{
+    delay,
     mem,
     virtio::{Error as VirtioError, VirtioTransport},
 };
@@ -270,45 +268,6 @@ impl PciDevice {
     }
 }
 
-const NSECS_PER_SEC: u64 = 1000000000;
-const CPU_KHZ_DEFAULT: u64 = 200;
-const PAUSE_THRESHOLD_TICKS: u64 = 150;
-
-#[cfg(target_arch = "x86_64")]
-unsafe fn ndelay(ns: u64) {
-    let delta = ns * CPU_KHZ_DEFAULT / NSECS_PER_SEC;
-    let mut pause_delta = 0;
-    let start = _rdtsc();
-    if delta > PAUSE_THRESHOLD_TICKS {
-        pause_delta = delta - PAUSE_THRESHOLD_TICKS;
-    }
-    while _rdtsc() - start < pause_delta {
-        asm!("pause");
-    }
-    while _rdtsc() - start < delta {}
-}
-
-#[cfg(target_arch = "x86_64")]
-unsafe fn udelay(us: u64) {
-    for _i in 0..us as usize {
-        ndelay(1000)
-    }
-}
-
-#[cfg(target_arch = "x86_64")]
-unsafe fn mdelay(ms: u64) {
-    for _i in 0..ms as usize {
-        udelay(1000)
-    }
-}
-
-#[cfg(target_arch = "x86_64")]
-unsafe fn delay(s: u64) {
-    for _i in 0..s as usize {
-        mdelay(1000)
-    }
-}
-
 const ATA_CMD_READ_SECTORS_EXT: u8 = 0x24;
 const ATA_CMD_IDENTIFY_DEVICE: u8 = 0xec;
 
@@ -522,7 +481,7 @@ impl AhciIoPort {
         const DATAIO_WAIT_US: u64 = 5000 * 1000;
         let mut wait_us = DATAIO_WAIT_US;
         while self.port_region.io_read_u32(PORT_CMD_ISSUE) & 0x1 != 0 && wait_us > 0 {
-            unsafe { udelay(1); }
+            unsafe { delay::udelay(1); }
             wait_us -= 1;
         }
         if wait_us <= 0 {
@@ -647,7 +606,7 @@ impl AhciController {
                 port_cmd &= !port_cmd_bits;
                 self.ports[i].port_region.io_write_u32(PORT_CMD, port_cmd);
                 self.ports[i].port_region.io_read_u32(PORT_CMD);
-                unsafe { mdelay(500); }
+                unsafe { delay::mdelay(500); }
             }
             port_cmd = PORT_CMD_SPIN_UP | PORT_CMD_FIS_RX;
             self.ports[i].port_region.io_write_u32(PORT_CMD, port_cmd);
@@ -657,7 +616,7 @@ impl AhciController {
                 if j >= 4 { break; }
                 let ssts = self.ports[i].port_region.io_read_u32(PORT_SCR_STAT);
                 if (ssts & 0x0f) == 0x03 { break; }
-                unsafe { mdelay(1); }
+                unsafe { delay::mdelay(1); }
                 j += 1;
             }
             if j >= 4 {
@@ -676,7 +635,7 @@ impl AhciController {
                 if j >= 10000 { break; }
                 let tfd = self.ports[i].port_region.io_read_u32(PORT_TFDATA);
                 if tfd & (ATA_STAT_BUSY | ATA_STAT_DRQ) == 0 { break; }
-                unsafe { mdelay(1); }
+                unsafe { delay::mdelay(1); }
                 j += 1;
             }
             if j >= 10000 {
