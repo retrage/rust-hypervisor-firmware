@@ -29,6 +29,8 @@ SECTIONS
   .bss : {
     bss_start = .;
     *(.bss .bss.*)
+    . = ALIGN(0x800);
+    KEEP(*(.ahci.dma))
     bss_size = . - bss_start;
   }
 
