@@ -15,6 +15,9 @@
 use atomic_refcell::AtomicRefCell;
 use x86_64::instructions::port::{Port, PortWriteOnly};
 
+#[cfg(target_arch = "x86_64")]
+use core::arch::x86_64::_rdtsc;
+
 use crate::{
     mem,
     virtio::{Error as VirtioError, VirtioTransport},
@@ -260,6 +263,45 @@ impl PciDevice {
         for bar in &self.bars {
             log!("Bar: type={:?} address={:x}", bar.bar_type, bar.address);
         }
+    }
+}
+
+const NSECS_PER_SEC: u64 = 1000000000;
+const CPU_KHZ_DEFAULT: u64 = 200;
+const PAUSE_THRESHOLD_TICKS: u64 = 150;
+
+#[cfg(target_arch = "x86_64")]
+unsafe fn ndelay(ns: u64) {
+    let delta = ns * CPU_KHZ_DEFAULT / NSECS_PER_SEC;
+    let mut pause_delta = 0;
+    let start = _rdtsc();
+    if delta > PAUSE_THRESHOLD_TICKS {
+        pause_delta = delta - PAUSE_THRESHOLD_TICKS;
+    }
+    while _rdtsc() - start < pause_delta {
+        asm!("pause");
+    }
+    while _rdtsc() - start < delta {}
+}
+
+#[cfg(target_arch = "x86_64")]
+unsafe fn udelay(us: u64) {
+    for _i in 0..us as usize {
+        ndelay(1000)
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+unsafe fn mdelay(ms: u64) {
+    for _i in 0..ms as usize {
+        udelay(1000)
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+unsafe fn delay(s: u64) {
+    for _i in 0..s as usize {
+        mdelay(1000)
     }
 }
 
