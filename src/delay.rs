@@ -36,3 +36,15 @@ pub unsafe fn mdelay(ms: u64) {
         udelay(1000)
     }
 }
+
+pub fn wait_while<F>(ms: u64, cond: F) -> bool
+where
+    F: Fn() -> bool
+{
+    let mut us = ms * 1000;
+    while cond() == true && us > 0 {
+        unsafe { udelay(1); }
+        us -= 1;
+    }
+    cond()
+}
