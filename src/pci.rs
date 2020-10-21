@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use atomic_refcell::AtomicRefCell;
-use x86_64::instructions::port::{PortReadOnly, PortWriteOnly};
+use x86_64::instructions::port::{Port, PortWriteOnly};
 
 use crate::{
     mem,
@@ -29,7 +29,7 @@ static PCI_CONFIG: AtomicRefCell<PciConfig> = AtomicRefCell::new(PciConfig::new(
 
 struct PciConfig {
     address_port: PortWriteOnly<u32>,
-    data_port: PortReadOnly<u32>,
+    data_port: Port<u32>,
 }
 
 impl PciConfig {
@@ -37,11 +37,14 @@ impl PciConfig {
         // We use the legacy, port-based Configuration Access Mechanism (CAM).
         Self {
             address_port: PortWriteOnly::new(0xcf8),
-            data_port: PortReadOnly::new(0xcfc),
+            data_port: Port::new(0xcfc),
         }
     }
 
-    fn read(&mut self, bus: u8, device: u8, func: u8, offset: u8) -> u32 {
+    fn ops<F>(&mut self, bus: u8, device: u8, func: u8, offset: u8, mut ops: F) -> u32
+    where
+        F: FnMut(&mut PortWriteOnly<u32>, &mut Port<u32>, u32) -> u32,
+    {
         assert_eq!(offset % 4, 0);
         assert!(device < MAX_DEVICES);
         assert!(func < MAX_FUNCTIONS);
@@ -52,12 +55,36 @@ impl PciConfig {
         let addr = addr | u32::from(offset & 0xfc); // register 7-0
         let addr = addr | 1u32 << 31; // enable bit 31
 
+        ops(&mut self.address_port, &mut self.data_port, addr)
+    }
+
+    fn read(&mut self, bus: u8, device: u8, func: u8, offset: u8) -> u32 {
         // SAFETY: We have exclusive access to the ports, so the data read will
         // correspond to the address written.
-        unsafe {
-            self.address_port.write(addr);
-            self.data_port.read()
-        }
+        self.ops(
+            bus,
+            device,
+            func,
+            offset,
+            |address_port, data_port, addr| unsafe {
+                address_port.write(addr);
+                data_port.read()
+            },
+        )
+    }
+
+    fn write(&mut self, bus: u8, device: u8, func: u8, offset: u8, val: u32) {
+        self.ops(
+            bus,
+            device,
+            func,
+            offset,
+            |address_port, data_port, addr| unsafe {
+                address_port.write(addr);
+                data_port.write(val);
+                0
+            },
+        );
     }
 }
 
@@ -157,6 +184,12 @@ impl PciDevice {
         PCI_CONFIG
             .borrow_mut()
             .read(self.bus, self.device, self.func, offset)
+    }
+
+    fn write_u32(&self, offset: u8, val: u32) {
+        PCI_CONFIG
+            .borrow_mut()
+            .write(self.bus, self.device, self.func, offset, val)
     }
 
     fn init(&mut self) {
