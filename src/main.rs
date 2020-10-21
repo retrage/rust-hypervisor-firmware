@@ -154,6 +154,17 @@ fn main(info: &dyn boot::Info) -> ! {
 
     pci::print_bus();
 
+    pci::with_class(
+        0x01,
+        0x06,
+        |pci_device| {
+            log!("Found AHCI controller");
+            let mut ahci_controller = pci::AhciController::new(pci_device);
+            ahci_controller.init();
+            false
+        }
+        );
+
     pci::with_devices(
         VIRTIO_PCI_VENDOR_ID,
         VIRTIO_PCI_BLOCK_DEVICE_ID,
