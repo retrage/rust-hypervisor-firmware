@@ -479,12 +479,9 @@ impl AhciIoPort {
         unsafe { self.fill_cmd_slot(opts); }
         self.port_region.io_write_u32(PORT_CMD_ISSUE, 1);
         const DATAIO_WAIT_US: u64 = 5000 * 1000;
-        let mut wait_us = DATAIO_WAIT_US;
-        while self.port_region.io_read_u32(PORT_CMD_ISSUE) & 0x1 != 0 && wait_us > 0 {
-            unsafe { delay::udelay(1); }
-            wait_us -= 1;
-        }
-        if wait_us <= 0 {
+        if delay::wait_while(DATAIO_WAIT_US, || {
+            self.port_region.io_read_u32(PORT_CMD_ISSUE) & 0x1 != 0
+        }) != false {
             return Err(AhciIoPortError::Timeout);
         }
         Ok(())
@@ -611,15 +608,10 @@ impl AhciController {
             port_cmd = PORT_CMD_SPIN_UP | PORT_CMD_FIS_RX;
             self.ports[i].port_region.io_write_u32(PORT_CMD, port_cmd);
             //self.ports[i].port_region.io_read_u32(PORT_CMD);
-            let mut j = 0;
-            loop {
-                if j >= 4 { break; }
+            if delay::wait_while(4, || {
                 let ssts = self.ports[i].port_region.io_read_u32(PORT_SCR_STAT);
-                if (ssts & 0x0f) == 0x03 { break; }
-                unsafe { delay::mdelay(1); }
-                j += 1;
-            }
-            if j >= 4 {
+                ssts & 0x0f != 0x03
+            }) != false {
                 log!("SATA link {} timeout.", i);
                 continue;
             } else {
@@ -630,18 +622,11 @@ impl AhciController {
                 self.ports[i].port_region.io_write_u32(PORT_SCR_ERR, serr);
             }
             log!("Waiting for device on port {}...", i);
-            let mut j = 0;
-            loop {
-                if j >= 10000 { break; }
+            if delay::wait_while(10000, || {
                 let tfd = self.ports[i].port_region.io_read_u32(PORT_TFDATA);
-                if tfd & (ATA_STAT_BUSY | ATA_STAT_DRQ) == 0 { break; }
-                unsafe { delay::mdelay(1); }
-                j += 1;
-            }
-            if j >= 10000 {
+                tfd & (ATA_STAT_BUSY | ATA_STAT_DRQ) != 0
+            }) != false {
                 log!("timeout.");
-            } else {
-                log!("ok. Target spinup took {} ms.", j);
             }
             let serr = self.ports[i].port_region.io_read_u32(PORT_SCR_ERR);
             if serr != 0 {
