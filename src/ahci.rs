@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Cipyright (C) 2020 Akira Moroo
+// Copyright (C) 2020 Akira Moroo
 // Copyright (C) 2006 Freescale Semiconductor, Inc
 
 use crate::block::{Error as BlockError, SectorRead};
