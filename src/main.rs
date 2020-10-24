@@ -31,6 +31,7 @@ mod serial;
 #[macro_use]
 mod common;
 
+mod ahci;
 #[cfg(not(test))]
 mod asm;
 mod block;
@@ -162,7 +163,13 @@ fn main(info: &dyn boot::Info) -> ! {
         |pci_device| {
             log!("Found AHCI controller");
             let mut ahci_controller = pci::AhciController::new(pci_device);
-            ahci_controller.init();
+            if ahci_controller.init().is_ok() {
+                for i in 0..ahci_controller.ports.len() {
+                    if !ahci_controller.ports[i].is_link() { continue; }
+                    let cap = ahci_controller.ports[i].get_capacity().unwrap();
+                    log!("AHCI device capacity: {:x}", cap);
+                }
+            }
             false
         }
         );

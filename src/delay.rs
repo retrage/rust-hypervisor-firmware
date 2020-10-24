@@ -42,7 +42,7 @@ where
     F: Fn() -> bool
 {
     let mut us = ms * 1000;
-    while cond() == true && us > 0 {
+    while cond() && us > 0 {
         unsafe { udelay(1); }
         us -= 1;
     }
