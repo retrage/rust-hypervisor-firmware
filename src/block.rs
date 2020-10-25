@@ -12,10 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[derive(Debug)]
 pub enum Error {
     BlockIOError,
 
     BlockNotSupported,
+}
+
+pub trait SectorCapacity {
+    /// Get number of sectors that the device holds
+    fn get_capacity(&self) -> Result<u64, Error>;
 }
 
 pub trait SectorRead {
@@ -30,3 +36,5 @@ pub trait SectorWrite {
     fn write(&self, sector: u64, data: &mut [u8]) -> Result<(), Error>;
     fn flush(&self) -> Result<(), Error>;
 }
+
+pub trait SectorOps: SectorCapacity + SectorRead + SectorWrite {}

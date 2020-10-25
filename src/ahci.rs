@@ -2,7 +2,7 @@
 // Copyright (C) 2020 Akira Moroo
 // Copyright (C) 2006 Freescale Semiconductor, Inc
 
-use crate::block::{Error as BlockError, SectorRead, SectorWrite};
+use crate::block::{Error as BlockError, SectorCapacity, SectorRead, SectorWrite};
 use crate::{
     delay,
     mem,
@@ -301,14 +301,19 @@ impl AhciIoPort {
 
         self.device_data_io(&fis, buf, is_write)
     }
-    pub fn get_capacity(&mut self) -> Result<u32, Error> {
+}
+
+impl SectorCapacity for AhciIoPort {
+    fn get_capacity(&self) -> Result<u64, BlockError> {
         let mut id: [u8; 512] = [0; 512];
-        self.identify(&mut id)?;
+        if self.identify(&mut id).is_err() {
+            return Err(BlockError::BlockIOError);
+        }
         let capacity: u32 = (id[120] as u32)
                           | ((id[121] as u32) << 8)
                           | ((id[122] as u32) << 16)
                           | ((id[123] as u32) << 24);
-        Ok(capacity)
+        Ok(u64::from(capacity))
     }
 }
 
