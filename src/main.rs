@@ -88,9 +88,10 @@ fn boot_from_device(device: &mut virtioblk::VirtioBlockDevice, info: &dyn boot::
         log!("Error configuring block device: {:?}", err);
         return false;
     }
+    use crate::block::SectorCapacity;
     log!(
         "Virtio block device configured. Capacity: {} sectors",
-        device.get_capacity()
+        device.get_capacity().unwrap()
     );
 
     let (start, end) = match part::find_efi_partition(device) {
@@ -166,6 +167,7 @@ fn main(info: &dyn boot::Info) -> ! {
             if ahci_controller.init().is_ok() {
                 for i in 0..ahci_controller.ports.len() {
                     if !ahci_controller.ports[i].is_link() { continue; }
+                    use crate::block::SectorCapacity;
                     let cap = ahci_controller.ports[i].get_capacity().unwrap();
                     log!("AHCI device capacity: {:x}", cap);
                 }

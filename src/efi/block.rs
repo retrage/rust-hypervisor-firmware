@@ -183,7 +183,8 @@ impl<'a> BlockWrapper<'a> {
         last_lba: u64,
         uuid: [u8; 16],
     ) -> *mut BlockWrapper {
-        let last_block = unsafe { (*block).get_capacity() } - 1;
+        use crate::block::SectorCapacity;
+        let last_block = unsafe { (*block).get_capacity().unwrap() } - 1;
 
         let size = core::mem::size_of::<BlockWrapper>();
         let (_status, new_address) = super::ALLOCATOR.borrow_mut().allocate_pages(
