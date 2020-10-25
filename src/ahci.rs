@@ -2,13 +2,15 @@
 // Copyright (C) 2020 Akira Moroo
 // Copyright (C) 2006 Freescale Semiconductor, Inc
 
-use crate::block::{Error as BlockError, SectorRead};
+use crate::block::{Error as BlockError, SectorRead, SectorWrite};
 use crate::{
     delay,
     mem,
 };
 
 const ATA_CMD_READ_SECTORS_EXT: u8 = 0x24;
+const ATA_CMD_WRITE_SECTORS_EXT: u8 = 0x34;
+const ATA_CMD_FLUSH_CACHE_EXT: u8 = 0xea;
 const ATA_CMD_IDENTIFY_DEVICE: u8 = 0xec;
 
 const AHCI_MAX_SG: usize = 56;
@@ -284,7 +286,10 @@ impl AhciIoPort {
         let mut fis: [u8; 20] = [0; 20];
         fis[0] = 0x27;
         fis[1] = 1 << 7;
-        fis[2] = ATA_CMD_READ_SECTORS_EXT; // TODO: read support only for now
+        fis[2] = match is_write {
+            true => ATA_CMD_READ_SECTORS_EXT,
+            false => ATA_CMD_WRITE_SECTORS_EXT,
+        };
         fis[3] = 0xe0;
         fis[4] = (sector & 0xff) as u8;
         fis[5] = ((sector >> 8) & 0xff) as u8;
@@ -310,6 +315,27 @@ impl AhciIoPort {
 impl SectorRead for AhciIoPort {
     fn read(&self, sector: u64, data: &mut [u8]) -> Result<(), BlockError> {
         match self.read_write(sector, data, false) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(BlockError::BlockIOError),
+        }
+    }
+}
+
+impl SectorWrite for AhciIoPort {
+    fn write(&self, sector: u64, data: &mut [u8]) -> Result<(), BlockError> {
+        match self.read_write(sector, data, true) {
+            Ok(()) => Ok(()),
+            Err(_) => Err(BlockError::BlockIOError),
+        }
+    }
+
+    fn flush(&self) -> Result<(), BlockError> {
+        let mut fis: [u8; 20] = [0; 20];
+        fis[0] = 0x27;
+        fis[1] = 1 << 7;
+        fis[2] = ATA_CMD_FLUSH_CACHE_EXT;
+        let mut buf: [u8; 0] = [0; 0];
+        match self.device_data_io(&fis, &mut buf, true) {
             Ok(()) => Ok(()),
             Err(_) => Err(BlockError::BlockIOError),
         }
