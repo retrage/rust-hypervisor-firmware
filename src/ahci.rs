@@ -287,8 +287,8 @@ impl AhciIoPort {
         fis[0] = 0x27;
         fis[1] = 1 << 7;
         fis[2] = match is_write {
-            true => ATA_CMD_READ_SECTORS_EXT,
-            false => ATA_CMD_WRITE_SECTORS_EXT,
+            true => ATA_CMD_WRITE_SECTORS_EXT,
+            false => ATA_CMD_READ_SECTORS_EXT,
         };
         fis[3] = 0xe0;
         fis[4] = (sector & 0xff) as u8;
