@@ -83,14 +83,16 @@ fn enable_sse() {
 const VIRTIO_PCI_VENDOR_ID: u16 = 0x1af4;
 const VIRTIO_PCI_BLOCK_DEVICE_ID: u16 = 0x1042;
 
-fn boot_from_device(device: &mut virtioblk::VirtioBlockDevice, info: &dyn boot::Info) -> bool {
+fn boot_from_device(device: &mut ahci::AhciIoPort, info: &dyn boot::Info) -> bool {
+    /*
     if let Err(err) = device.init() {
         log!("Error configuring block device: {:?}", err);
         return false;
     }
+    */
     use crate::block::SectorCapacity;
     log!(
-        "Virtio block device configured. Capacity: {} sectors",
+        "AHCI block device configured. Capacity: {} sectors",
         device.get_capacity().unwrap()
     );
 
@@ -120,7 +122,7 @@ fn boot_from_device(device: &mut virtioblk::VirtioBlockDevice, info: &dyn boot::
     }
 
     log!("Using EFI boot.");
-    let mut file = match f.open("/EFI/BOOT/BOOTX64 EFI") {
+    let mut file = match f.open("/EFI/BOOT/BOOTX64.EFI") {
         Ok(file) => file,
         Err(err) => {
             log!("Failed to load default EFI binary: {:?}", err);
@@ -167,15 +169,16 @@ fn main(info: &dyn boot::Info) -> ! {
             if ahci_controller.init().is_ok() {
                 for i in 0..ahci_controller.ports.len() {
                     if !ahci_controller.ports[i].is_link() { continue; }
-                    use crate::block::SectorCapacity;
-                    let cap = ahci_controller.ports[i].get_capacity().unwrap();
-                    log!("AHCI device capacity: {:x}", cap);
+                    if boot_from_device(&mut ahci_controller.ports[i], info) {
+                        return true;
+                    }
                 }
             }
             false
         }
         );
 
+    /*
     pci::with_devices(
         VIRTIO_PCI_VENDOR_ID,
         VIRTIO_PCI_BLOCK_DEVICE_ID,
@@ -186,6 +189,7 @@ fn main(info: &dyn boot::Info) -> ! {
             boot_from_device(&mut device, info)
         },
     );
+    */
 
     panic!("Unable to boot from any virtio-blk device")
 }

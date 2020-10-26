@@ -87,9 +87,9 @@ pub struct BlockIoProtocol {
 }
 
 #[repr(C)]
-pub struct BlockWrapper<'a> {
+pub struct BlockWrapper {
     hw: super::HandleWrapper,
-    block: *const crate::virtioblk::VirtioBlockDevice<'a>,
+    block: *const crate::ahci::AhciIoPort,
     media: BlockIoMedia,
     pub proto: BlockIoProtocol,
     // The ordering of these paths are very important, along with the C
@@ -99,8 +99,8 @@ pub struct BlockWrapper<'a> {
     start_lba: u64,
 }
 
-pub struct BlockWrappers<'a> {
-    pub wrappers: [*mut BlockWrapper<'a>; 16],
+pub struct BlockWrappers {
+    pub wrappers: [*mut BlockWrapper; 16],
     pub count: usize,
 }
 
@@ -175,9 +175,9 @@ pub extern "win64" fn flush_blocks(proto: *mut BlockIoProtocol) -> Status {
     }
 }
 
-impl<'a> BlockWrapper<'a> {
+impl BlockWrapper {
     pub fn new(
-        block: *const crate::virtioblk::VirtioBlockDevice,
+        block: *const crate::ahci::AhciIoPort,
         partition_number: u32,
         start_lba: u64,
         last_lba: u64,
@@ -301,7 +301,7 @@ impl<'a> BlockWrapper<'a> {
 #[allow(clippy::transmute_ptr_to_ptr)]
 pub fn populate_block_wrappers(
     wrappers: &mut BlockWrappers,
-    block: *const crate::virtioblk::VirtioBlockDevice,
+    block: *const crate::ahci::AhciIoPort,
 ) -> Option<u32> {
     let mut parts: [crate::part::PartitionEntry; 16] = unsafe { core::mem::zeroed() };
 
