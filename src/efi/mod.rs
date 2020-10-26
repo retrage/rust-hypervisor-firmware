@@ -625,7 +625,7 @@ pub fn efi_exec(
     loaded_size: u64,
     info: &dyn boot::Info,
     fs: &crate::fat::Filesystem,
-    block: *const crate::virtioblk::VirtioBlockDevice,
+    block: *const crate::ahci::AhciIoPort,
 ) {
     let mut rs = efi::RuntimeServices {
         hdr: efi::TableHeader {
