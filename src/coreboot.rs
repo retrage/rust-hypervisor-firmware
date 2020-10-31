@@ -78,8 +78,18 @@ impl StartInfo {
         }
     }
     pub fn set_rsdp(&mut self) {
-        let rsdp_addr = self.find_rsdp(0xe0000, 0x20000).unwrap_or(0);
-        self.rsdp_addr = rsdp_addr;
+        const EBDA_ADDR: u64 = 0x40e;
+        let addr = unsafe { *(EBDA_ADDR as *const u16) };
+        log!("EBDA: {:#x}", addr);
+        match self.find_rsdp(addr as u64, 1024) {
+            Some(rsdp_addr) => {
+                self.rsdp_addr = rsdp_addr;
+            },
+            None => {
+                let rsdp_addr = self.find_rsdp(0xe0000, 0x20000).unwrap_or(0);
+                self.rsdp_addr = rsdp_addr;
+            }
+        }
     }
     fn find_header(&self, start: u64, len: usize) -> Result<&Header, ()> {
         for addr in (start..(start + len as u64)).step_by(16) {
@@ -118,22 +128,18 @@ impl Info for StartInfo {
         "coreboot"
     }
     fn rsdp_addr(&self) -> u64 {
-        log!("rsdp_addr");
         self.rsdp_addr
     }
     fn cmdline(&self) -> &[u8] {
-        log!("cmdline");
         b""
     }
     fn num_entries(&self) -> u8 {
-        log!("num_entries: {}", self.memmap_entries);
         if self.memmap_addr == 0 {
             return 0;
         }
         self.memmap_entries as u8
     }
     fn entry(&self, idx: u8) -> E820Entry {
-        log!("entry: {}", idx);
         assert!(idx < self.num_entries());
         let ptr = self.memmap_addr as *const MemMapEntry;
         let entry = unsafe { &*ptr.offset(idx as isize) };
@@ -144,6 +150,7 @@ impl Info for StartInfo {
         }
     }
     fn parse(&mut self, start: u64, len: usize) -> Result<(), ()> {
+        self.set_rsdp();
         let header = self.find_header(start, len)?;
         let ptr = unsafe { (header as *const Header).offset(1) };
         let mut offset = 0;
