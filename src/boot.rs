@@ -17,6 +17,7 @@ pub trait Info {
     // Methods to access the E820 Memory map
     fn num_entries(&self) -> u8;
     fn entry(&self, idx: u8) -> E820Entry;
+    fn parse(&mut self, start: u64, len: usize) -> Result<(), ()>;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -103,6 +104,9 @@ impl Info for Params {
     fn entry(&self, idx: u8) -> E820Entry {
         assert!(idx < self.num_entries());
         self.e820_table[idx as usize]
+    }
+    fn parse(&mut self, start: u64, len: usize) -> Result<(), ()> {
+        Ok(())
     }
 }
 

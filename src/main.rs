@@ -38,6 +38,7 @@ mod block;
 mod boot;
 mod bzimage;
 mod delay;
+mod coreboot;
 mod efi;
 mod fat;
 mod gdt;
@@ -147,16 +148,19 @@ fn boot_from_device(device: &mut ahci::AhciIoPort, info: &dyn boot::Info) -> boo
 }
 
 #[no_mangle]
-pub extern "C" fn rust64_start(rdi: &pvh::StartInfo) -> ! {
-    main(rdi)
+pub extern "C" fn rust64_start(_rdi: &pvh::StartInfo) -> ! {
+    let mut info = coreboot::StartInfo::new();
+    main(&mut info)
 }
 
-fn main(info: &dyn boot::Info) -> ! {
+fn main(info: &mut dyn boot::Info) -> ! {
     serial::PORT.borrow_mut().init();
     log!("\nBooting with {}", info.name());
 
     enable_sse();
     paging::setup();
+
+    info.parse(0x00000500, 0x1000);
 
     pci::print_bus();
 

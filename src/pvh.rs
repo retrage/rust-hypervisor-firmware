@@ -57,6 +57,9 @@ impl Info for StartInfo {
             entry_type: entry.entry_type,
         }
     }
+    fn parse(&mut self, start: u64, len: usize) -> Result<(), ()> {
+        Ok(())
+    }
 }
 
 // The PVH Boot Protocol starts at the 32-bit entrypoint to our firmware.
