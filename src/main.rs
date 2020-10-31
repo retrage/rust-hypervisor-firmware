@@ -150,6 +150,7 @@ fn boot_from_device(device: &mut ahci::AhciIoPort, info: &dyn boot::Info) -> boo
 #[no_mangle]
 pub extern "C" fn rust64_start(_rdi: &pvh::StartInfo) -> ! {
     let mut info = coreboot::StartInfo::new();
+    info.set_rsdp();
     main(&mut info)
 }
 

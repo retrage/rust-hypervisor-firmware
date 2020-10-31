@@ -77,6 +77,10 @@ impl StartInfo {
             memmap_entries: 0,
         }
     }
+    pub fn set_rsdp(&mut self) {
+        let rsdp_addr = self.find_rsdp(0xe0000, 0x20000).unwrap_or(0);
+        self.rsdp_addr = rsdp_addr;
+    }
     fn find_header(&self, start: u64, len: usize) -> Result<&Header, ()> {
         for addr in (start..(start + len as u64)).step_by(16) {
             let header = unsafe { &*(addr as *const Header) };
@@ -96,6 +100,16 @@ impl StartInfo {
         let mem_ptr = unsafe { rec_ptr.offset(rec_size) as *const MemMapEntry };
         self.memmap_entries = n_entries as u32;
         self.memmap_addr = mem_ptr as u64;
+    }
+    fn find_rsdp(&self, start: u64, len: usize) -> Option<u64> {
+        const RSDP_SIGNATURE: u64 = 0x2052_5450_2044_5352;
+        for addr in (start..(start + len as u64)).step_by(16) {
+            let val = unsafe { *(addr as *const u64) };
+            if val == RSDP_SIGNATURE {
+                return Some(addr);
+            }
+        }
+        None
     }
 }
 
@@ -151,4 +165,3 @@ impl Info for StartInfo {
         Ok(())
     }
 }
-
