@@ -5,9 +5,7 @@
 
 use core::mem::size_of;
 
-use crate::{
-    boot::{E820Entry, Info},
-};
+use crate::boot::{E820Entry, Info};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -34,7 +32,7 @@ impl Record {
 
 #[derive(Debug)]
 #[repr(C)]
-struct Forward  {
+struct Forward {
     tag: u32,
     size: u32,
     forward: u64,
@@ -66,34 +64,30 @@ impl CBUInt64 {
 pub struct StartInfo {
     rsdp_addr: u64,
     memmap_addr: u64,
-    memmap_entries: u32,
+    memmap_entries: usize,
 }
 
 impl Default for StartInfo {
     fn default() -> Self {
         let (memmap_addr, memmap_entries) = match parse_info(0x0, 0x1000) {
-            Some((addr, n_entries)) => { (addr, n_entries) },
-            None => {
-                match parse_info(0xf0000, 0x1000) {
-                    Some((addr, n_entries)) => { (addr, n_entries) },
-                    None => panic!("coreboot table not found"),
-                }
+            Some((addr, n_entries)) => (addr, n_entries),
+            None => match parse_info(0xf0000, 0x1000) {
+                Some((addr, n_entries)) => (addr, n_entries),
+                None => panic!("coreboot table not found"),
             },
         };
         let ebda_addr = unsafe { *(0x40e as *const u16) };
         let rsdp_addr = match find_rsdp(ebda_addr as u64, 0x400) {
-            Some(addr) => { addr },
-            None => {
-                match find_rsdp(0xe0000, 0x20000) {
-                    Some(addr) => { addr },
-                    None => panic!("RSDP table not found"),
-                }
+            Some(addr) => addr,
+            None => match find_rsdp(0xe0000, 0x20000) {
+                Some(addr) => addr,
+                None => panic!("RSDP table not found"),
             },
         };
         Self {
-            rsdp_addr: rsdp_addr,
-            memmap_addr: memmap_addr,
-            memmap_entries: memmap_entries as u32,
+            rsdp_addr,
+            memmap_addr,
+            memmap_entries,
         }
     }
 }
@@ -150,8 +144,10 @@ fn find_rsdp(start: u64, len: usize) -> Option<u64> {
 
 fn parse_info(start: u64, len: usize) -> Option<(u64, usize)> {
     let header_addr = match find_header(start, len) {
-        Some(addr) => { addr },
-        None => { return None; },
+        Some(addr) => addr,
+        None => {
+            return None;
+        }
     };
     let header = unsafe { &*(header_addr as *const Header) };
     let ptr = unsafe { (header_addr as *const Header).offset(1) };
@@ -163,11 +159,11 @@ fn parse_info(start: u64, len: usize) -> Option<(u64, usize)> {
             Record::TAG_FORWARD => {
                 let forward = unsafe { &*(rec_ptr as *const Forward) };
                 return parse_info(forward.forward, len);
-            },
+            }
             Record::TAG_MEMORY => {
                 return Some(parse_memmap(record));
-            },
-            _ => {},
+            }
+            _ => {}
         }
         offset += record.size;
     }
