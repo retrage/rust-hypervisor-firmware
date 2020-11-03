@@ -51,6 +51,8 @@ mod pci;
 mod pe;
 mod pvh;
 mod virtio;
+mod virtio_blk;
+mod virtio_pci;
 
 #[cfg(all(not(test), feature = "log-panic"))]
 #[panic_handler]
@@ -82,7 +84,7 @@ fn enable_sse() {
 const VIRTIO_PCI_VENDOR_ID: u16 = 0x1af4;
 const VIRTIO_PCI_BLOCK_DEVICE_ID: u16 = 0x1042;
 
-fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn boot::Info) -> bool {
+fn boot_from_device(device: &mut virtio_blk::Device, info: &dyn boot::Info) -> bool {
     if let Err(err) = device.init() {
         log!("Error configuring block device: {:?}", err);
         return false;
@@ -175,9 +177,9 @@ fn main(info: &dyn boot::Info) -> ! {
         VIRTIO_PCI_VENDOR_ID,
         VIRTIO_PCI_BLOCK_DEVICE_ID,
         |pci_device| {
-            let mut pci_transport = pci::VirtioPciTransport::new(pci_device);
-            block::VirtioBlockDevice::new(&mut pci_transport);
-            let mut device = block::VirtioBlockDevice::new(&mut pci_transport);
+            let mut pci_transport = virtio_pci::Transport::new(pci_device);
+            virtio_blk::Device::new(&mut pci_transport);
+            let mut device = virtio_blk::Device::new(&mut pci_transport);
             boot_from_device(&mut device, info)
         },
     );
