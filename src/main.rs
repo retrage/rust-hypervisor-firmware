@@ -89,10 +89,16 @@ fn boot_from_device(device: &mut virtio_blk::Device, info: &dyn boot::Info) -> b
         log!("Error configuring block device: {:?}", err);
         return false;
     }
-    log!(
-        "Virtio block device configured. Capacity: {} sectors",
-        device.get_capacity()
-    );
+    match (device as &mut dyn block::Capacity).get_capacity() {
+        Ok(capacity) => log!(
+            "Virtio block device configured. Capacity: {} sectors",
+            capacity
+        ),
+        Err(err) => {
+            log!("Error getting device capacity: {:?}", err);
+            return false;
+        }
+    }
 
     let (start, end) = match part::find_efi_partition(device) {
         Ok(p) => p,

@@ -183,7 +183,11 @@ impl<'a> BlockWrapper<'a> {
         last_lba: u64,
         uuid: [u8; 16],
     ) -> *mut BlockWrapper {
-        let last_block = unsafe { (*block).get_capacity() } - 1;
+        let capacity = unsafe { (&*block as &dyn crate::block::Capacity).get_capacity() };
+        let last_block = match capacity {
+            Ok(value) => value - 1,
+            Err(err) => panic!("Error getting device capacity: {:?}", err),
+        };
 
         let size = core::mem::size_of::<BlockWrapper>();
         let (_status, new_address) = super::ALLOCATOR.borrow_mut().allocate_pages(

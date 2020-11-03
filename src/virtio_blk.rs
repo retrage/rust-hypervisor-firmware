@@ -14,7 +14,7 @@
 
 use core::cell::RefCell;
 
-use crate::block::{Error as BlockError, SectorRead, SectorWrite};
+use crate::block::{Capacity, Error as BlockError, SectorRead, SectorWrite};
 use crate::virtio::{Error as VirtioError, VirtioTransport};
 
 const QUEUE_SIZE: usize = 16;
@@ -181,12 +181,6 @@ impl<'a> Device<'a> {
         Ok(())
     }
 
-    // Number of sectors that this device holds
-    pub fn get_capacity(&self) -> u64 {
-        u64::from(self.transport.read_device_config(0))
-            | u64::from(self.transport.read_device_config(4)) << 32
-    }
-
     fn request(
         &self,
         sector: u64,
@@ -267,6 +261,14 @@ impl<'a> Device<'a> {
             VIRTIO_BLK_S_UNSUPP => Err(BlockError::BlockNotSupported),
             _ => Err(BlockError::BlockNotSupported),
         }
+    }
+}
+
+impl<'a> Capacity for Device<'a> {
+    fn get_capacity(&self) -> Result<u64, BlockError> {
+        let cap = u64::from(self.transport.read_device_config(0))
+            | u64::from(self.transport.read_device_config(4)) << 32;
+        Ok(cap)
     }
 }
 

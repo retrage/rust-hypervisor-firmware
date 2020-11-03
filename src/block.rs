@@ -12,10 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[derive(Debug)]
 pub enum Error {
     BlockIOError,
 
     BlockNotSupported,
+}
+
+pub trait Capacity {
+    /// Get number of sectors that the device holds
+    fn get_capacity(&self) -> Result<u64, Error>;
 }
 
 pub trait SectorRead {
