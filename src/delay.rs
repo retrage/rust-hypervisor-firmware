@@ -54,3 +54,18 @@ where
     }
     cond()
 }
+
+#[allow(dead_code)]
+pub fn wait_until<F>(ms: u64, cond: F) -> bool
+where
+    F: Fn() -> bool
+{
+    let mut us = ms * 1000;
+    while !cond() && us > 0 {
+        unsafe {
+            udelay(1);
+        }
+        us -= 1;
+    }
+    cond()
+}
