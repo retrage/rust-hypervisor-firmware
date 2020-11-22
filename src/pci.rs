@@ -208,8 +208,7 @@ impl PciDevice {
     }
 
     pub fn get_bar(&self, idx: usize) -> u64 {
-        assert!(idx < self.bars.len());
-        self.bars[idx].address
+        self.read_u32(0x10 + idx as u8 * 4) as u64
     }
 
     pub fn init(&mut self) {
