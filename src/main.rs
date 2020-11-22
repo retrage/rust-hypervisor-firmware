@@ -31,6 +31,7 @@ mod serial;
 #[macro_use]
 mod common;
 
+mod ahci;
 #[cfg(not(test))]
 mod asm;
 mod block;
@@ -178,6 +179,20 @@ fn main(info: &dyn boot::Info) -> ! {
     log!("\nBooting with {}", info.name());
 
     pci::print_bus();
+
+    pci::with_class(
+        0x01,
+        0x06,
+        |pci_device| {
+            log!("Found AHCI controller");
+            let mut hba = ahci::Hba::new(pci_device);
+            match hba.init() {
+                Ok(()) => {},
+                Err(_) => log!("Failed to init AHCI controller"),
+            }
+            false
+        },
+    );
 
     pci::with_devices(
         VIRTIO_PCI_VENDOR_ID,
