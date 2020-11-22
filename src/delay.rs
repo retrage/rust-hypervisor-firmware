@@ -9,6 +9,7 @@ const NSECS_PER_SEC: u64 = 1000000000;
 const CPU_KHZ_DEFAULT: u64 = 200;
 const PAUSE_THRESHOLD_TICKS: u64 = 150;
 
+#[allow(dead_code)]
 #[cfg(target_arch = "x86_64")]
 pub unsafe fn ndelay(ns: u64) {
     let delta = ns * CPU_KHZ_DEFAULT / NSECS_PER_SEC;
@@ -23,6 +24,7 @@ pub unsafe fn ndelay(ns: u64) {
     while _rdtsc() - start < delta {}
 }
 
+#[allow(dead_code)]
 #[cfg(target_arch = "x86_64")]
 pub unsafe fn udelay(us: u64) {
     for _i in 0..us as usize {
@@ -30,6 +32,7 @@ pub unsafe fn udelay(us: u64) {
     }
 }
 
+#[allow(dead_code)]
 #[cfg(target_arch = "x86_64")]
 pub unsafe fn mdelay(ms: u64) {
     for _i in 0..ms as usize {
@@ -37,6 +40,7 @@ pub unsafe fn mdelay(ms: u64) {
     }
 }
 
+#[allow(dead_code)]
 pub fn wait_while<F>(ms: u64, cond: F) -> bool
 where
     F: Fn() -> bool,
