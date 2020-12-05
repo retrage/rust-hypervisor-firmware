@@ -2,7 +2,6 @@
 // Copyright (c) 2019, Intel Corporation. All rights reserved.
 
 use core::cmp;
-use core::convert::TryInto;
 
 use crate::{
     delay,
@@ -63,22 +62,26 @@ impl Hba {
             self.or_reg(Self::GHC, Self::GHC_ENABLE);
         }
 
+        let pci_cmd = self.device.read_u32(0x04);
+        self.device.write_u32(0x04, pci_cmd | 0x04);
+
         let mut max_port_num = ((cap & 0x1f) + 1) as u8;
         let port_impl_bit_map = self.read_reg(Self::PI);
 
         max_port_num = cmp::min(max_port_num, log2_u32(port_impl_bit_map) + 1);
 
         let hba = self as *const Hba;
-        for idx in 0..=max_port_num {
-            let idx = idx as usize;
+        const BASE_ADDR: u64 = 0x20000;
+        // FIXME
+        let cmd_table_size = unsafe { CMD_TABLE.init(BASE_ADDR) };
+        for idx in 1..=max_port_num {
+            let idx = idx as usize - 1;
             if port_impl_bit_map & (1 << idx) == 0 { continue; }
             let port_base = base as u64 + 0x100 + idx as u64 * 0x80;
             self.ports[idx] = Port::new(port_base, hba, idx);
             unsafe {
-                let rfis_base: *const RxFIS = &CMD_TABLE.rfis[idx];
-                let rfis = Data64::new(rfis_base as u64);
-                let clb_base: *const CommandList = &CMD_TABLE.cmd_list;
-                let clb = Data64::new(clb_base as u64);
+                let rfis = Data64::new(CMD_TABLE.rfis[idx].0.base);
+                let clb = Data64::new(CMD_TABLE.cmd_list.0.base);
                 if self.ports[idx].init(&rfis, &clb).is_err() {
                     continue;
                 }
@@ -208,6 +211,7 @@ impl Port {
 
         let cap = self.get_hba().read_reg(Hba::CAP);
 
+        //let rfis = unsafe { Data64::new(CMD_TABLE.rfis[0].0.base) };
         self.write_reg(Self::FB, rfis.lo);
         self.write_reg(Self::FBU, rfis.hi);
 
@@ -307,11 +311,11 @@ impl Port {
         self.wait_mmio_wait(Self::CMD, Self::CMD_FR, 0, timeout)
     }
 
-    fn start_cmd(&self) -> Result<(), Error> {
+    fn start_cmd(&self, timeout: u64) -> Result<(), Error> {
         let cap = self.get_hba().read_reg(Hba::CAP);
 
         self.clear_status();
-        //self.enable_fis_rx();
+        self.enable_fis_rx();
 
         let mut start_cmd: u32 =  0;
         if self.read_reg(Self::CMD) & Self::CMD_ALPE != 0 {
@@ -324,11 +328,11 @@ impl Port {
         if (tfd & (Self::TFD_BSY | Self::TFD_DRQ)) != 0 {
             if cap & (1 << 24) != 0 {
                 self.or_reg(Self::CMD, Self::CMD_CLO);
-                self.wait_mmio_wait(Self::CMD, Self::CMD_CLO, 0, Self::ATA_TIMEOUT)?;
+                self.wait_mmio_wait(Self::CMD, Self::CMD_CLO, 0, timeout)?;
             }
         }
 
-        self.wait_mmio_wait(Self::CMD, Self::CMD_CR, 0, Self::ATA_TIMEOUT)?;
+        self.wait_mmio_wait(Self::CMD, Self::CMD_CR, 0, timeout)?;
         self.or_reg(Self::CMD, Self::CMD_ST | start_cmd);
 
         let cmd_slot = 0; // XXX: We use cmd slot 0 only
@@ -349,32 +353,32 @@ impl Port {
         self.wait_mmio_wait(Self::CMD, Self::CMD_CR, 0, timeout)
     }
 
-    fn do_pio(&self, buf: &mut [u8], cmd_fis: &mut CommandFIS, cmd_list: &mut CommandList, is_write: bool, timeout: u64)
+    fn do_pio(&self, buf: &mut [u8], is_write: bool, timeout: u64)
         -> Result<(), Error> {
         if !self.detect_phy() {
             return Err(Error::NotAvailable);
         }
 
+        /*
         let old_rfis_lo = self.read_reg(Self::FB);
         let old_rfis_hi = self.read_reg(Self::FBU);
-        let rfis_base: *const RxFIS = unsafe { &CMD_TABLE.rfis[self.idx] };
-        let rfis = Data64::new(rfis_base as u64);
+        let rfis = unsafe { Data64::new(CMD_TABLE.rfis[self.idx].0.base) };
         self.write_reg(Self::FB, rfis.lo);
         self.write_reg(Self::FBU, rfis.hi);
 
         let old_clb_lo = self.read_reg(Self::CLB);
         let old_clb_hi = self.read_reg(Self::CLBU);
-        let clb_base: *const CommandList = unsafe { &CMD_TABLE.cmd_list };
-        let clb = Data64::new(clb_base as u64);
+        let clb = unsafe { Data64::new(CMD_TABLE.cmd_list.0.base) };
         self.write_reg(Self::CLB, clb.lo);
         self.write_reg(Self::CLBU, clb.hi);
+        */
 
         unsafe {
-            CMD_TABLE.build_cmd(self.idx, buf, cmd_fis, cmd_list, self);
+            CMD_TABLE.build_cmd(self.idx, buf, self);
         }
 
-        self.enable_fis_rx();
-        self.start_cmd()?; // TODO: Do exit
+        //self.enable_fis_rx();
+        self.start_cmd(Self::ATA_TIMEOUT)?; // TODO: Do exit
 
         match is_write {
             true => self.wait_write_completion(timeout)?,
@@ -384,11 +388,13 @@ impl Port {
         self.stop_cmd(timeout)?;
         self.disable_fis_rx(timeout)?;
 
+        /*
         self.write_reg(Self::FB, old_rfis_lo);
         self.write_reg(Self::FBU, old_rfis_hi);
 
         self.write_reg(Self::CLB, old_clb_lo);
         self.write_reg(Self::CLBU, old_clb_hi);
+        */
 
         Ok(())
     }
@@ -404,7 +410,7 @@ impl Port {
                 if (self.read_reg(Self::TFD) & Self::TFD_ERR) != 0 {
                     return Err(Error::DeviceError);
                 }
-                if unsafe { CMD_TABLE.cmd_list.prdbc } == count as u32 {
+                if unsafe { CMD_TABLE.cmd_list.get_prdbc() } == count as u32 {
                     return Ok(());
                 }
             }
@@ -429,16 +435,14 @@ impl Port {
     }
 
     fn identify(&self) -> Result<(), Error> {
-        let mut cmd_fis = CommandFIS([0; CMD_FIS_SIZE]);
-        cmd_fis.build_identify();
-
-        let mut cmd_list = CommandList::new();
-        cmd_list.set_cfl((CommandFIS::REGISTER_H2D_SIZE / 4) as u8);
-        cmd_list.set_w(false);
+        unsafe {
+            CMD_TABLE.cmd_fis.build_identify();
+            CMD_TABLE.cmd_list.build_identify();
+        }
 
         let mut id: [u8; 512] = [0; 512];
 
-        self.do_pio(&mut id, &mut cmd_fis, &mut cmd_list, false, Self::ATA_TIMEOUT)
+        self.do_pio(&mut id, false, Self::ATA_TIMEOUT)
     }
 
     fn read_reg(&self, offset: u64) -> u32 {
@@ -472,54 +476,87 @@ fn log2_u32(op: u32) -> u8 {
     (u32::MAX.count_ones() - op.leading_zeros() - 1) as u8
 }
 
-// Command List must be 0x400 aligned
-#[derive(Copy, Clone, Debug)]
-#[repr(C, packed)]
-struct CommandList {
-    opts: u32,
-    prdbc: u32,     // Physical Region Descriptor Byte Count
-    ctba: u32,      // Command Table Descriptor Base Address (low)
-    ctbau: u32,     // Command Table Descriptor Base Address (high)
-    _rsvd: [u32; 4],
+fn zero_mem(mem: &mut mem::MemoryRegion, length: u64) {
+    for idx in 0..length {
+        mem.io_write_u8(idx, 0);
+    }
 }
 
+const CMD_LIST_SIZE: u64 = 0x20;
+#[derive(Copy, Clone, Default)]
+struct CommandList(mem::MemoryRegion);
+
 impl CommandList {
+    const FLAGS: u64 = 0x0000;
+    const PRDBC: u64 = 0x0004;
+    const CTBA: u64 = 0x0008;
+    const CTBAU: u64 = 0x000c;
+
     const fn new() -> Self {
-        Self {
-            opts: 0,
-            prdbc: 0,
-            ctba: 0,
-            ctbau: 0,
-            _rsvd: [0; 4],
-        }
+        Self(mem::MemoryRegion::new(0, 0))
+    }
+
+    fn init(&mut self, base: u64) {
+        self.0 = mem::MemoryRegion::new(base, CMD_LIST_SIZE);
+    }
+
+    fn build_identify(&mut self) {
+        self.set_cfl((CommandFIS::REGISTER_H2D_SIZE / 4) as u8);
+        self.set_w(false);
+    }
+
+    fn get_prdbc(&self) -> u32 {
+        self.0.io_read_u32(Self::PRDBC)
     }
 
     fn set_cfl(&mut self, cfl: u8) {
         assert!(cfl < (1 << 5));
-        self.opts |= (cfl as u32) & ((1 << 5) - 1);
+        let val = self.0.io_read_u32(Self::FLAGS);
+        self.0.io_write_u32(Self::FLAGS, val | (cfl as u32) & ((1 << 5) - 1));
     }
 
     fn set_w(&mut self, w: bool) {
-        self.opts |= (w as u32) << 7;
+        let val = self.0.io_read_u32(Self::FLAGS);
+        self.0.io_write_u32(Self::FLAGS, val | ((w as u32) << 7));
     }
 
     fn set_prdtl(&mut self, n_prdt: u16) {
-        self.opts |= ((n_prdt as u32) << 16) & (((1 << 16) - 1) << 16);
+        let val = self.0.io_read_u32(Self::FLAGS);
+        self.0.io_write_u32(Self::FLAGS, val | ((n_prdt as u32) << 16) & (((1 << 16) - 1) << 16));
+    }
+
+    fn set_ctba(&mut self, ctba: u32) {
+        self.0.io_write_u32(Self::CTBA, ctba);
+    }
+
+    fn set_ctbau(&mut self, ctbau: u32) {
+        self.0.io_write_u32(Self::CTBAU, ctbau);
     }
 }
 
 // Received FIS must be 0x100 aligned
-const RX_FIS_SIZE: usize = 0x100;
-#[derive(Debug)]
-#[repr(C, packed)]
-struct RxFIS([u8; RX_FIS_SIZE]);
+const RX_FIS_SIZE: u64 = 0x100;
+#[derive(Copy, Clone, Default)]
+struct RxFIS(mem::MemoryRegion);
 
 impl RxFIS {
-    const PIO: usize = 0x20;
-    const D2H: usize = 0x40;
+    const PIO: u64 = 0x20;
+    const D2H: u64 = 0x40;
     const TYPE_MASK: u32 = 0x00ff;
     const REGISTER_D2H: u32 = 0x0034;
     const PIO_SETUP: u32 = 0x005f;
+
+    const fn new() -> Self {
+        Self(mem::MemoryRegion::new(0, 0))
+    }
+
+    fn init(&mut self, base: u64) {
+        self.0 = mem::MemoryRegion::new(base, RX_FIS_SIZE);
+    }
+
+    fn clear(&mut self) {
+        zero_mem(&mut self.0, RX_FIS_SIZE);
+    }
 
     fn wait_d2h_fis_rx(&self, timeout: u64) -> bool {
         delay::wait_until(timeout, ||{self.check_d2h_fis()})
@@ -533,88 +570,99 @@ impl RxFIS {
         self.check_mem_set(Self::D2H, Self::TYPE_MASK, Self::REGISTER_D2H)
     }
 
-    fn check_mem_set(&self, offset: usize, mask: u32, test: u32) -> bool {
-        (self.read_u32(offset) & mask) == test
-    }
-
-    fn read_u32(&self, offset: usize) -> u32 {
-        assert!(offset < self.0.len() - 4);
-        u32::from_le_bytes(self.0[offset..offset + 4].try_into().unwrap())
+    fn check_mem_set(&self, offset: u64, mask: u32, test: u32) -> bool {
+        (self.0.io_read_u32(offset) & mask) == test
     }
 }
 
 // Command Table Descriptor must be 0x80 aligned
-const CMD_FIS_SIZE: usize = 0x80;
-#[derive(Copy, Clone, Debug)]
-#[repr(C, packed)]
-struct CommandFIS([u8; CMD_FIS_SIZE]);
+const CMD_FIS_SIZE: u64 = 0x80;
+#[derive(Copy, Clone, Default)]
+struct CommandFIS(mem::MemoryRegion);
 
 impl CommandFIS {
     const REGISTER_H2D: u8 = 0x27;
     const REGISTER_H2D_SIZE: usize = 20;
 
-    const TYPE: usize = 0x00;
-    const CMD_IND: usize = 0x01;
-    const CMD: usize = 0x02;
-    const DEV_HEAD: usize = 0x07;
-    const SEC_COUNT: usize = 0x0c;
+    const TYPE: u64 = 0x00;
+    const CMD_IND: u64 = 0x01;
+    const CMD: u64 = 0x02;
+    const DEV_HEAD: u64 = 0x07;
+    const SEC_COUNT: u64 = 0x0c;
+
+    const fn new() -> Self {
+        Self(mem::MemoryRegion::new(0, 0))
+    }
+
+    fn init(&mut self, base: u64) {
+        self.0 = mem::MemoryRegion::new(base, CMD_FIS_SIZE);
+    }
+
+    fn clear(&mut self) {
+        zero_mem(&mut self.0, CMD_FIS_SIZE);
+    }
 
     fn build_identify(&mut self) {
-        unsafe { self.0 = core::mem::zeroed() };
-        self.0[Self::TYPE] = Self::REGISTER_H2D;
-        self.0[Self::CMD_IND] = 1 << 7;
-        self.0[Self::CMD] = 0xec;
-        self.0[Self::SEC_COUNT] = 1;
-        self.0[Self::DEV_HEAD] = 0xe0;
+        self.0.io_write_u8(Self::TYPE, Self::REGISTER_H2D);
+        self.0.io_write_u8(Self::CMD_IND, 1 << 7);
+        self.0.io_write_u8(Self::CMD, 0xec);
+        self.0.io_write_u8(Self::SEC_COUNT, 1);
+        self.0.io_write_u8(Self::DEV_HEAD, 0xe0);
     }
 }
 
-#[derive(Debug)]
-#[repr(C, packed)]
-struct ATAPICommand([u8; 0x10]);
-
-// PRDT Base Address must be word aligned
-
 // Physical Region Descriptor Table
-#[derive(Copy, Clone, Debug)]
-#[repr(C, packed)]
-struct CommandPRDT {
-    dba: u32,   // Data Base Address (low)
-    dbau: u32,  // Data Base Address (high)
-    _rsvd: u32,
-    flags: u32, // [21:0]: Data Byte Count, [31]: Interrupt on Completion
-}
+// PRDT Base Address must be word aligned
+const CMD_PRDT_SIZE: u64 = 0x0010;
+#[derive(Copy, Clone, Default)]
+struct CommandPRDT(mem::MemoryRegion);
 
 impl CommandPRDT {
     const MAX_DATA: usize = 0x400000;
+
+    const DBA: u64 = 0x0000;
+    const DBAU: u64 = 0x0004;
+    const FLAGS: u64 = 0x000c;
+
     const fn new() -> Self {
-        Self {
-            dba: 0,
-            dbau: 0,
-            _rsvd: 0,
-            flags: 0,
-        }
+        Self(mem::MemoryRegion::new(0, 0))
     }
-    fn set_dbc(&mut self, val: u32) {
-        self.flags |= (val - 1) & 0x3fffff;
+
+    fn init(&mut self, base: u64) {
+        self.0 = mem::MemoryRegion::new(base, CMD_PRDT_SIZE);
     }
-    fn set_ioc(&mut self, val: bool) {
-        self.flags |= (val as u32) << 31;
+
+    fn clear(&mut self) {
+        zero_mem(&mut self.0, CMD_PRDT_SIZE);
+    }
+
+    fn set_dbc(&mut self, dbc: u32) {
+        let val = self.0.io_read_u32(Self::FLAGS);
+        self.0.io_write_u32(Self::FLAGS, val | (dbc - 1) & 0x3fffff);
+    }
+
+    fn set_ioc(&mut self, ioc: bool) {
+        let val = self.0.io_read_u32(Self::FLAGS);
+        self.0.io_write_u32(Self::FLAGS, val | (ioc as u32) << 31);
+    }
+
+    fn set_dba(&mut self, dba: u32) {
+        self.0.io_write_u32(Self::DBA, dba);
+    }
+
+    fn set_dbau(&mut self, dbau: u32) {
+        self.0.io_write_u32(Self::DBAU, dbau);
     }
 }
 
 const MAX_PORTS: usize = 32;
 const MAX_PRDT: usize = 8;
 
-#[derive(Debug)]
-#[repr(C, packed)]
+#[derive(Default)]
 struct CommandTable {
     cmd_list: CommandList,
-    _rsvd: [u8; 0x1000 - 0x20],
     rfis: [RxFIS; MAX_PORTS],
     cmd_fis: CommandFIS,
-    atapi_cmd: ATAPICommand,
-    _rsvd1: [u8; 0x30],
     cmd_prdt: [CommandPRDT; MAX_PRDT],
 }
 
@@ -622,41 +670,52 @@ impl CommandTable {
     const fn new() -> Self {
         Self {
             cmd_list: CommandList::new(),
-            _rsvd: [0; 0x1000 - 0x20],
-            rfis: [RxFIS([0; RX_FIS_SIZE]); MAX_PORTS],
-            cmd_fis: CommandFIS([0; CMD_FIS_SIZE]),
-            atapi_cmd: ATAPICommand([0; 0x10]),
-            _rsvd1: [0; 0x30],
+            rfis: [RxFIS::new(); MAX_PORTS],
+            cmd_fis: CommandFIS::new(),
             cmd_prdt: [CommandPRDT::new(); MAX_PRDT],
         }
     }
 
+    fn init(&mut self, base: u64) -> usize {
+        // TODO: check CommandList align
+        let mut addr = base;
+        self.cmd_list.init(addr);
+        addr += 0x1000; // TODO: set align to 0x100
+        for rfis in self.rfis.iter_mut() {
+            rfis.init(addr);
+            addr += RX_FIS_SIZE;
+        }
+        // TODO: check CommandFIS align
+        self.cmd_fis.init(addr);
+        // TODO: check CommandPRDT align
+        for cmd_prdt in self.cmd_prdt.iter_mut() {
+            cmd_prdt.init(addr);
+            addr += CMD_PRDT_SIZE;
+        }
+        (addr - base) as usize
+    }
+
     fn clear_rfis(&mut self, idx: usize) {
-        unsafe { self.rfis[idx] = core::mem::zeroed() };
+        self.rfis[idx].clear();
     }
 
     fn clear_cmd_fis(&mut self) {
-        unsafe { self.cmd_fis = core::mem::zeroed() };
+        self.cmd_fis.clear();
     }
 
     fn clear_prdt(&mut self) {
-        for i in 0..MAX_PRDT {
-            unsafe { self.cmd_prdt[i] = core::mem::zeroed()} ;
+        for cmd_prdt in self.cmd_prdt.iter_mut() {
+            cmd_prdt.clear();
         }
     }
 
-    fn build_cmd(&mut self, idx: usize, buf: &mut [u8],
-                 cmd_fis: &mut CommandFIS, cmd_list: &mut CommandList, port: &Port) {
+    fn build_cmd(&mut self, idx: usize, buf: &mut [u8], port: &Port) {
         let n_prdt = ((buf.len() - 1) / CommandPRDT::MAX_DATA) + 1;
         assert!(n_prdt <= MAX_PRDT);
 
         self.clear_rfis(idx);
         self.clear_cmd_fis();
         self.clear_prdt();
-
-        core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
-        self.cmd_fis = *cmd_fis;
-        core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
 
         // TODO: Set CFISPmNum
         port.and_reg(Port::CMD, !(Port::CMD_DLAE | Port::CMD_ATAPI));
@@ -668,8 +727,8 @@ impl CommandTable {
 
             let buf_ptr = &buf[i * CommandPRDT::MAX_DATA] as *const u8;
             let buf_addr = Data64::new(buf_ptr as u64);
-            self.cmd_prdt[i].dba = buf_addr.lo;
-            self.cmd_prdt[i].dbau = buf_addr.hi;
+            self.cmd_prdt[i].set_dba(buf_addr.lo);
+            self.cmd_prdt[i].set_dbau(buf_addr.hi);
 
             if remain >= CommandPRDT::MAX_DATA {
                 remain -= CommandPRDT::MAX_DATA;
@@ -680,16 +739,10 @@ impl CommandTable {
             self.cmd_prdt[n_prdt - 1].set_ioc(true);
         }
 
-        //self.cmd_list.prdbc = n_prdt as u32;
-        cmd_list.set_prdtl(n_prdt as u16);
-        let cmd_fis_ptr = &self.cmd_fis as *const CommandFIS;
-        let cmd_fis_addr = Data64::new(cmd_fis_ptr as u64);
-        cmd_list.ctba = cmd_fis_addr.lo;
-        cmd_list.ctbau = cmd_fis_addr.hi;
-
-        core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
-        self.cmd_list = *cmd_list;
-        core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
+        self.cmd_list.set_prdtl(n_prdt as u16);
+        let addr = Data64::new(self.cmd_fis.0.base);
+        self.cmd_list.set_ctba(addr.lo);
+        self.cmd_list.set_ctbau(addr.hi);
 
         // TODO: Pmp
     }
