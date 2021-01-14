@@ -40,3 +40,22 @@ macro_rules! log {
         println!($($arg)*);
     }};
 }
+
+#[macro_export]
+macro_rules! dbg {
+    () => {
+        log!("[{}:{}]", file!(), line!());
+    };
+    ($val:expr $(,)?) => {
+        match $val {
+            tmp => {
+                log!("[{}:{}] {} = {:#?}",
+                      file!(), line!(), stringify!($val), &tmp);
+                tmp
+            }
+        }
+    };
+    ($($val:expr),+ $(,)?) => {
+        ($(dbg!($val)),+,)
+    };
+}
