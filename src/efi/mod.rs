@@ -28,6 +28,7 @@ use r_efi::{
 };
 
 use crate::boot;
+use crate::nvram;
 
 mod alloc;
 mod block;
@@ -57,8 +58,33 @@ static mut BLOCK_WRAPPERS: block::BlockWrappers = block::BlockWrappers {
     count: 0,
 };
 
-pub extern "win64" fn get_time(_: *mut Time, _: *mut TimeCapabilities) -> Status {
-    Status::DEVICE_ERROR
+pub extern "win64" fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Status {
+    if time.is_null() {
+        return Status::INVALID_PARAMETER;
+    }
+
+    let (year, month, day) = match nvram::read_date() {
+        Ok((y, m, d)) => (y, m, d),
+        Err(()) => return Status::DEVICE_ERROR,
+    };
+    let (hour, minute, second) = match nvram::read_time() {
+        Ok((h, m, s)) => (h, m, s),
+        Err(()) => return Status::DEVICE_ERROR,
+    };
+
+    unsafe {
+        (*time).year = 2000 + year as u16;
+        (*time).month = month;
+        (*time).day = day;
+        (*time).hour = hour;
+        (*time).minute = minute;
+        (*time).second = second;
+        (*time).nanosecond = 0;
+        (*time).timezone = 0;
+        (*time).daylight = 0;
+    }
+
+    Status::SUCCESS
 }
 
 pub extern "win64" fn set_time(_: *mut Time) -> Status {
