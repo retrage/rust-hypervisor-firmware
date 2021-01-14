@@ -45,6 +45,7 @@ mod gdt;
 mod integration;
 mod loader;
 mod mem;
+mod nvram;
 mod paging;
 mod part;
 mod pci;
