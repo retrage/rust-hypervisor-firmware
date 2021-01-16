@@ -7,28 +7,8 @@ ram32_start:
     movl %ebx, %edi
 
 setup_page_tables:
-    # First L2 entry identity maps [0, 1 GiB)
-    push %edi
-    movl $L2_TABLES, %ecx
-    xor  %eax, %eax
-    xor  %edx, %edx
-    lea  0x0(%esi),%esi
-    lea  0x0(%edi,%eiz,1),%edi
-1:
-    movl %eax, %ebx
-    movl %edx, 0x4(%ecx)
-    orb  $0b10000011, %bl # huge (bit 7), writable (bit 1), present (bit 0)
-    addl $0x200000, %eax
-    adc  $0x0, %edx
-    movl %ebx, (%ecx)
-    movl %eax, %ebx
-    xor  $0x40000000, %ebx
-    movl %edx, %esi
-    addl $0x8, %ecx
-    orl  %ebx, %esi
-    jne  1b
-    pop  %edi
-
+    # First L2 entry identity maps [0, 2 MiB)
+    movl $0b10000011, (L2_TABLES) # huge (bit 7), writable (bit 1), present (bit 0)
     # First L3 entry points to L2 table
     movl $L2_TABLES, %eax
     orb  $0b00000011, %al # writable (bit 1), present (bit 0)
