@@ -626,8 +626,8 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
     ALLOCATOR.borrow_mut().allocate_pages(
         AllocateType::AllocateAddress,
         MemoryType::RuntimeServicesCode,
-        4 * 1024 * 1024 / PAGE_SIZE,
-        0x800000,
+        1024 * 1024 / PAGE_SIZE,
+        1024 * 1024,
     );
 
     // Add the loaded binary
