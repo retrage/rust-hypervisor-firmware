@@ -53,6 +53,106 @@ struct HandleWrapper {
 
 pub static ALLOCATOR: AtomicRefCell<Allocator> = AtomicRefCell::new(Allocator::new());
 
+static mut RS: efi::RuntimeServices = efi::RuntimeServices {
+    hdr: efi::TableHeader {
+        signature: efi::RUNTIME_SERVICES_SIGNATURE,
+        revision: efi::RUNTIME_SERVICES_REVISION,
+        header_size: core::mem::size_of::<efi::RuntimeServices>() as u32,
+        crc32: 0, // TODO
+        reserved: 0,
+    },
+    get_time,
+    set_time,
+    get_wakeup_time,
+    set_wakeup_time,
+    set_virtual_address_map,
+    convert_pointer,
+    get_variable,
+    get_next_variable_name,
+    set_variable,
+    get_next_high_mono_count,
+    reset_system,
+    update_capsule,
+    query_capsule_capabilities,
+    query_variable_info,
+};
+
+static mut BS: efi::BootServices = efi::BootServices {
+    hdr: efi::TableHeader {
+        signature: efi::BOOT_SERVICES_SIGNATURE,
+        revision: efi::BOOT_SERVICES_REVISION,
+        header_size: core::mem::size_of::<efi::BootServices>() as u32,
+        crc32: 0, // TODO
+        reserved: 0,
+    },
+    raise_tpl,
+    restore_tpl,
+    allocate_pages,
+    free_pages,
+    get_memory_map,
+    allocate_pool,
+    free_pool,
+    create_event,
+    set_timer,
+    wait_for_event,
+    signal_event,
+    close_event,
+    check_event,
+    install_protocol_interface,
+    reinstall_protocol_interface,
+    uninstall_protocol_interface,
+    handle_protocol,
+    register_protocol_notify,
+    locate_handle,
+    locate_device_path,
+    install_configuration_table,
+    load_image,
+    start_image,
+    exit,
+    unload_image,
+    exit_boot_services,
+    get_next_monotonic_count,
+    stall,
+    set_watchdog_timer,
+    connect_controller,
+    disconnect_controller,
+    open_protocol,
+    close_protocol,
+    open_protocol_information,
+    protocols_per_handle,
+    locate_handle_buffer,
+    locate_protocol,
+    install_multiple_protocol_interfaces,
+    uninstall_multiple_protocol_interfaces,
+    calculate_crc32,
+    copy_mem,
+    set_mem,
+    create_event_ex,
+    reserved: core::ptr::null_mut(),
+};
+
+static mut ST: efi::SystemTable = efi::SystemTable {
+    hdr: efi::TableHeader {
+        signature: efi::SYSTEM_TABLE_SIGNATURE,
+        revision: (2 << 16) | (80),
+        header_size: core::mem::size_of::<efi::SystemTable>() as u32,
+        crc32: 0, // TODO
+        reserved: 0,
+    },
+    firmware_vendor: core::ptr::null_mut(), // TODO,
+    firmware_revision: 0,
+    console_in_handle: console::STDIN_HANDLE,
+    con_in: core::ptr::null_mut(),
+    console_out_handle: console::STDOUT_HANDLE,
+    con_out: core::ptr::null_mut(),
+    standard_error_handle: console::STDERR_HANDLE,
+    std_err: core::ptr::null_mut(),
+    runtime_services: core::ptr::null_mut(),
+    boot_services: core::ptr::null_mut(),
+    number_of_table_entries: 0,
+    configuration_table: core::ptr::null_mut(),
+};
+
 static mut BLOCK_WRAPPERS: block::BlockWrappers = block::BlockWrappers {
     wrappers: [core::ptr::null_mut(); 16],
     count: 0,
@@ -441,6 +541,14 @@ pub extern "win64" fn unload_image(_: Handle) -> Status {
 }
 
 pub extern "win64" fn exit_boot_services(_: Handle, _: usize) -> Status {
+    let mut st = unsafe { &mut ST };
+    st.boot_services = core::ptr::null_mut();
+    st.con_in = core::ptr::null_mut();
+    st.console_in_handle = core::ptr::null_mut();
+    st.con_out = core::ptr::null_mut();
+    st.console_out_handle = core::ptr::null_mut();
+    st.std_err = core::ptr::null_mut();
+    st.standard_error_handle = core::ptr::null_mut();
     Status::SUCCESS
 }
 
@@ -653,84 +761,6 @@ pub fn efi_exec(
     fs: &crate::fat::Filesystem,
     block: *const crate::block::VirtioBlockDevice,
 ) {
-    let mut rs = efi::RuntimeServices {
-        hdr: efi::TableHeader {
-            signature: efi::RUNTIME_SERVICES_SIGNATURE,
-            revision: efi::RUNTIME_SERVICES_REVISION,
-            header_size: core::mem::size_of::<efi::RuntimeServices>() as u32,
-            crc32: 0, // TODO
-            reserved: 0,
-        },
-        get_time,
-        set_time,
-        get_wakeup_time,
-        set_wakeup_time,
-        set_virtual_address_map,
-        convert_pointer,
-        get_variable,
-        get_next_variable_name,
-        set_variable,
-        get_next_high_mono_count,
-        reset_system,
-        update_capsule,
-        query_capsule_capabilities,
-        query_variable_info,
-    };
-
-    let mut bs = efi::BootServices {
-        hdr: efi::TableHeader {
-            signature: efi::BOOT_SERVICES_SIGNATURE,
-            revision: efi::BOOT_SERVICES_REVISION,
-            header_size: core::mem::size_of::<efi::BootServices>() as u32,
-            crc32: 0, // TODO
-            reserved: 0,
-        },
-        raise_tpl,
-        restore_tpl,
-        allocate_pages,
-        free_pages,
-        get_memory_map,
-        allocate_pool,
-        free_pool,
-        create_event,
-        set_timer,
-        wait_for_event,
-        signal_event,
-        close_event,
-        check_event,
-        install_protocol_interface,
-        reinstall_protocol_interface,
-        uninstall_protocol_interface,
-        handle_protocol,
-        register_protocol_notify,
-        locate_handle,
-        locate_device_path,
-        install_configuration_table,
-        load_image,
-        start_image,
-        exit,
-        unload_image,
-        exit_boot_services,
-        get_next_monotonic_count,
-        stall,
-        set_watchdog_timer,
-        connect_controller,
-        disconnect_controller,
-        open_protocol,
-        close_protocol,
-        open_protocol_information,
-        protocols_per_handle,
-        locate_handle_buffer,
-        locate_protocol,
-        install_multiple_protocol_interfaces,
-        uninstall_multiple_protocol_interfaces,
-        calculate_crc32,
-        copy_mem,
-        set_mem,
-        create_event_ex,
-        reserved: core::ptr::null_mut(),
-    };
-
     let vendor_data = 0u32;
     let acpi_rsdp_ptr = info.rsdp_addr();
 
@@ -762,27 +792,14 @@ pub fn efi_exec(
 
     let mut stdin = console::STDIN;
     let mut stdout = console::STDOUT;
-    let mut st = efi::SystemTable {
-        hdr: efi::TableHeader {
-            signature: efi::SYSTEM_TABLE_SIGNATURE,
-            revision: efi::SYSTEM_TABLE_REVISION_2_70,
-            header_size: core::mem::size_of::<efi::SystemTable>() as u32,
-            crc32: 0, // TODO
-            reserved: 0,
-        },
-        firmware_vendor: core::ptr::null_mut(), // TODO,
-        firmware_revision: 0,
-        console_in_handle: console::STDIN_HANDLE,
-        con_in: &mut stdin,
-        console_out_handle: console::STDOUT_HANDLE,
-        con_out: &mut stdout,
-        standard_error_handle: console::STDERR_HANDLE,
-        std_err: &mut stdout,
-        runtime_services: &mut rs,
-        boot_services: &mut bs,
-        number_of_table_entries: 1,
-        configuration_table: &mut ct,
-    };
+    let mut st = unsafe { &mut ST };
+    st.con_in = &mut stdin;
+    st.con_out = &mut stdout;
+    st.std_err = &mut stdout;
+    st.runtime_services = unsafe { &mut RS };
+    st.boot_services = unsafe { &mut BS };
+    st.number_of_table_entries = 1;
+    st.configuration_table = &mut ct;
 
     populate_allocator(info, loaded_address, loaded_size);
 
@@ -818,7 +835,7 @@ pub fn efi_exec(
         proto: LoadedImageProtocol {
             revision: r_efi::protocols::loaded_image::REVISION,
             parent_handle: 0 as Handle,
-            system_table: &mut st,
+            system_table: &mut *st,
             device_handle: &wrapped_fs as *const _ as Handle,
             file_path: &mut file_paths[0].device_path, // Pointer to first path entry
             load_options_size: 0,
@@ -835,5 +852,5 @@ pub fn efi_exec(
     let ptr = address as *const ();
     let code: extern "win64" fn(Handle, *mut efi::SystemTable) -> Status =
         unsafe { core::mem::transmute(ptr) };
-    (code)((&image as *const _) as Handle, &mut st);
+    (code)((&image as *const _) as Handle, &mut *st);
 }
