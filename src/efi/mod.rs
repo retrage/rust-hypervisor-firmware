@@ -602,6 +602,14 @@ pub extern "win64" fn unload_image(_: Handle) -> Status {
 }
 
 pub extern "win64" fn exit_boot_services(_: Handle, _: usize) -> Status {
+    let mut st = unsafe { &mut ST };
+    st.boot_services = core::ptr::null_mut();
+    st.con_in = core::ptr::null_mut();
+    st.console_in_handle = core::ptr::null_mut();
+    st.con_out = core::ptr::null_mut();
+    st.console_out_handle = core::ptr::null_mut();
+    st.std_err = core::ptr::null_mut();
+    st.standard_error_handle = core::ptr::null_mut();
     Status::SUCCESS
 }
 
