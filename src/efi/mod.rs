@@ -158,6 +158,10 @@ static mut BLOCK_WRAPPERS: block::BlockWrappers = block::BlockWrappers {
     count: 0,
 };
 
+pub extern "win64" fn not_available() -> Status {
+    Status::UNSUPPORTED
+}
+
 pub extern "win64" fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Status {
     if time.is_null() {
         return Status::INVALID_PARAMETER;
@@ -214,6 +218,29 @@ pub extern "win64" fn set_virtual_address_map(
     let descriptors = unsafe {
         core::slice::from_raw_parts_mut(descriptors as *mut alloc::MemoryDescriptor, count)
     };
+
+    let offset = descriptors[0].virtual_start - descriptors[0].physical_start;
+    let mut rs = unsafe { &mut RS };
+    let ptr = offset + (rs as *const efi::RuntimeServices) as u64;
+    let mut st = unsafe { &mut ST };
+    st.runtime_services = unsafe { core::mem::transmute(ptr) };
+    let ct = st.configuration_table;
+    let ptr = offset + (ct as *const efi::ConfigurationTable) as u64;
+    st.configuration_table = unsafe { core::mem::transmute(ptr) };
+    let ptr = offset + (not_available as *const ()) as u64;
+    rs.get_time = unsafe { core::mem::transmute(ptr) };
+    rs.set_time = unsafe { core::mem::transmute(ptr) };
+    rs.get_wakeup_time = unsafe { core::mem::transmute(ptr) };
+    rs.set_wakeup_time = unsafe { core::mem::transmute(ptr) };
+    rs.set_virtual_address_map = unsafe { core::mem::transmute(ptr) };
+    rs.convert_pointer = unsafe { core::mem::transmute(ptr) };
+    rs.get_variable = unsafe { core::mem::transmute(ptr) };
+    rs.set_variable = unsafe { core::mem::transmute(ptr) };
+    rs.get_next_variable_name = unsafe { core::mem::transmute(ptr) };
+    rs.reset_system = unsafe { core::mem::transmute(ptr) };
+    rs.update_capsule = unsafe { core::mem::transmute(ptr) };
+    rs.query_capsule_capabilities = unsafe { core::mem::transmute(ptr) };
+    rs.query_variable_info = unsafe { core::mem::transmute(ptr) };
 
     ALLOCATOR.borrow_mut().update_virtual_addresses(descriptors)
 }
