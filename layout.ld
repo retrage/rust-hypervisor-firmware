@@ -20,8 +20,10 @@ SECTIONS
      later sections avoids emitting empty sections in the final binary.       */
   data_start = .;
   .rodata : { *(.rodata .rodata.*) } :ram
+  text_start = ALIGN(4K);
   .text   : { *(.text .text.*)     }
   .text32 : { *(.text32)           }
+  text_end = ALIGN(4K);
   .data   : { *(.data .data.*)     }
   data_size = . - data_start;
 

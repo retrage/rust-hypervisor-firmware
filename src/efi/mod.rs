@@ -775,6 +775,13 @@ extern "win64" fn image_unload(_: Handle) -> Status {
     efi::Status::UNSUPPORTED
 }
 
+extern {
+    #[link_name = "text_start"]
+    static TEXT_START: u8;
+    #[link_name = "text_end"]
+    static TEXT_END: u8;
+}
+
 const PAGE_SIZE: u64 = 4096;
 const HEAP_SIZE: usize = 256 * 1024 * 1024;
 
@@ -792,12 +799,37 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
         }
     }
 
-    // Add ourselves
+    let text_start: u64;
+    let text_end: u64;
+    unsafe {
+        text_start = (&TEXT_START as *const _) as u64;
+        text_end = (&TEXT_END as *const _) as u64;
+    }
+
+    let lower_data_start = 1024 * 1024;
+    let lower_data_size = text_start - lower_data_start;
+    let upper_data_start = text_end;
+    let upper_data_size = (lower_data_start + 1024 * 1024) - upper_data_start;
+
     ALLOCATOR.borrow_mut().allocate_pages(
         AllocateType::AllocateAddress,
         MemoryType::RuntimeServicesData,
-        1024 * 1024 / PAGE_SIZE,
-        1024 * 1024,
+        lower_data_size / PAGE_SIZE,
+        lower_data_start,
+    );
+
+    ALLOCATOR.borrow_mut().allocate_pages(
+        AllocateType::AllocateAddress,
+        MemoryType::RuntimeServicesCode,
+        (text_end - text_start) / PAGE_SIZE,
+        text_start,
+    );
+
+    ALLOCATOR.borrow_mut().allocate_pages(
+        AllocateType::AllocateAddress,
+        MemoryType::RuntimeServicesData,
+        upper_data_size / PAGE_SIZE,
+        upper_data_start,
     );
 
     // Add the loaded binary
