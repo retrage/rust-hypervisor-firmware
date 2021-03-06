@@ -60,16 +60,24 @@ pub extern "win64" fn open(
         return Status::UNSUPPORTED;
     }
 
+    let current_dir = match &wrapper.node {
+        crate::fat::Node::Directory(d) => d,
+        _ => {
+            log!("Attempt to open from non-directory file is unsupported");
+            return Status::UNSUPPORTED;
+        },
+    };
+
     let mut path = [0; 256];
     crate::common::ucs2_to_ascii(path_in, &mut path[0..255]);
     let path = unsafe { core::str::from_utf8_unchecked(&path) };
 
-    match wrapper.fs.open(path) {
+    match wrapper.fs.open(&current_dir, path) {
         Ok(f) => {
             let fs_wrapper = unsafe { &(*wrapper.fs_wrapper) };
             if let Some(file_out_wrapper) = fs_wrapper.create_file(false) {
                 unsafe {
-                    (*file_out_wrapper).file = f;
+                    (*file_out_wrapper).node = f;
                     *file_out = &mut (*file_out_wrapper).proto;
                 }
                 Status::SUCCESS
@@ -104,7 +112,7 @@ pub extern "win64" fn read(file: *mut FileProtocol, size: *mut usize, buf: *mut 
 
         let mut data: [u8; 512] = [0; 512];
         unsafe {
-            match (*wrapper).file.read(&mut data) {
+            match (*wrapper).node.read(&mut data) {
                 Ok(bytes_read) => {
                     buf[current_offset..current_offset + bytes_read as usize]
                         .copy_from_slice(&data[0..bytes_read as usize]);
@@ -165,8 +173,8 @@ pub extern "win64" fn get_info(
             use crate::fat::Read;
             unsafe {
                 (*info).size = core::mem::size_of::<FileInfo>() as u64;
-                (*info).file_size = (*wrapper).file.get_size().into();
-                (*info).physical_size = (*wrapper).file.get_size().into();
+                (*info).file_size = (*wrapper).node.get_size().into();
+                (*info).physical_size = (*wrapper).node.get_size().into();
                 (*info).attribute = r_efi::protocols::file::MODE_READ;
             }
 
@@ -193,7 +201,7 @@ pub extern "win64" fn flush(_: *mut FileProtocol) -> Status {
 struct FileWrapper<'a> {
     fs: &'a crate::fat::Filesystem<'a>,
     proto: FileProtocol,
-    file: crate::fat::File<'a>,
+    node: crate::fat::Node<'a>,
     fs_wrapper: *const FileSystemWrapper<'a>,
     root: bool,
 }
@@ -221,6 +229,7 @@ impl<'a> FileSystemWrapper<'a> {
             unsafe {
                 (*fw).fs = self.fs;
                 (*fw).fs_wrapper = self;
+                (*fw).node = self.fs.root().unwrap();
                 (*fw).root = root;
                 (*fw).proto.revision = r_efi::protocols::file::REVISION;
                 (*fw).proto.open = open;

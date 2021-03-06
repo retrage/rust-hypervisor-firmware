@@ -108,9 +108,11 @@ fn parse_entry(f: &mut fat::File) -> Result<LoaderConfig, fat::Error> {
 
 const ENTRY_DIRECTORY: &str = "/loader/entries/";
 
-fn default_entry_path(fs: &fat::Filesystem) -> Result<[u8; 260], fat::Error> {
-    let mut f = fs.open("/loader/loader.conf")?;
-
+fn default_entry_path(fs: &fat::Filesystem, dir: &fat::Directory) -> Result<[u8; 260], fat::Error> {
+    let mut f = match fs.open(dir, "/loader/loader.conf")? {
+        fat::Node::File(f) => f,
+        _ => return Err(fat::Error::NotFound),
+    };
     let default_entry = default_entry_file(&mut f)?;
     let default_entry = ascii_strip(&default_entry);
 
@@ -122,11 +124,14 @@ fn default_entry_path(fs: &fat::Filesystem) -> Result<[u8; 260], fat::Error> {
     Ok(entry_path)
 }
 
-pub fn load_default_entry(fs: &fat::Filesystem, info: &dyn boot::Info) -> Result<Kernel, Error> {
-    let default_entry_path = default_entry_path(&fs)?;
+pub fn load_default_entry(fs: &fat::Filesystem, dir: &fat::Directory, info: &dyn boot::Info) -> Result<Kernel, Error> {
+    let default_entry_path = default_entry_path(&fs, dir)?;
     let default_entry_path = ascii_strip(&default_entry_path);
 
-    let mut f = fs.open(default_entry_path)?;
+    let mut f = match fs.open(dir, default_entry_path)? {
+        fat::Node::File(f) => f,
+        _ => return Err(Error::FileError(fat::Error::NotFound)),
+    };
     let entry = parse_entry(&mut f)?;
 
     let bzimage_path = ascii_strip(&entry.bzimage_path);
@@ -135,11 +140,11 @@ pub fn load_default_entry(fs: &fat::Filesystem, info: &dyn boot::Info) -> Result
 
     let mut kernel = Kernel::new(info);
 
-    let mut bzimage_file = fs.open(bzimage_path)?;
+    let mut bzimage_file = fs.open(dir, bzimage_path)?;
     kernel.load_kernel(&mut bzimage_file)?;
 
     if !initrd_path.is_empty() {
-        let mut initrd_file = fs.open(initrd_path)?;
+        let mut initrd_file = fs.open(dir, initrd_path)?;
         kernel.load_initrd(&mut initrd_file)?;
     }
 
