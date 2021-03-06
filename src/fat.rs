@@ -124,6 +124,11 @@ enum FileType {
     Directory,
 }
 
+pub enum Node<'a> {
+    File(File<'a>),
+    Directory(Directory<'a>),
+}
+
 pub struct File<'a> {
     filesystem: &'a Filesystem<'a>,
     start_cluster: u32,
@@ -133,6 +138,7 @@ pub struct File<'a> {
     position: u32,
 }
 
+#[derive(Copy, Clone)]
 pub struct Directory<'a> {
     filesystem: &'a Filesystem<'a>,
     cluster: Option<u32>,
@@ -151,6 +157,27 @@ fn ucs2_to_ascii(input: &[u16]) -> [u8; 255] {
         i += 1;
     }
     output
+}
+
+impl<'a> Read for Node<'a> {
+    fn read(&mut self, data: &mut [u8]) -> Result<u32, Error> {
+        match self {
+            Self::File(file) => file.read(data),
+            Self::Directory(_) => Err(Error::Unsupported),
+        }
+    }
+    fn seek(&mut self, position: u32) -> Result<(), Error> {
+        match self {
+            Self::File(file) => file.seek(position),
+            Self::Directory(_) => Err(Error::Unsupported),
+        }
+    }
+    fn get_size(&self) -> u32 {
+        match self {
+            Self::File(file) => file.get_size(),
+            Self::Directory(_) => 0_u32,
+        }
+    }
 }
 
 impl<'a> Directory<'a> {
@@ -555,36 +582,36 @@ impl<'a> Filesystem<'a> {
         ((cluster - 2) * self.sectors_per_cluster) + self.first_data_sector
     }
 
-    fn root(&self) -> Result<Directory, Error> {
+    pub fn root(&self) -> Result<Node, Error> {
         match self.fat_type {
             FatType::FAT12 | FatType::FAT16 => {
                 let root_directory_start = self.first_data_sector - self.root_dir_sectors;
-                Ok(Directory {
+                Ok(Node::Directory(Directory {
                     filesystem: self,
                     cluster: None,
                     sector: root_directory_start,
                     offset: 0,
-                })
+                }))
             }
-            FatType::FAT32 => Ok(Directory {
+            FatType::FAT32 => Ok(Node::Directory(Directory {
                 filesystem: self,
                 cluster: Some(self.root_cluster),
                 sector: 0,
                 offset: 0,
-            }),
+            })),
             _ => Err(Error::Unsupported),
         }
     }
 
-    fn get_file(&self, cluster: u32, size: u32) -> Result<File, Error> {
-        Ok(File {
+    fn get_file(&self, cluster: u32, size: u32) -> Result<Node, Error> {
+        Ok(Node::File(File {
             filesystem: self,
             start_cluster: cluster,
             active_cluster: cluster,
             sector_offset: 0,
             size,
             position: 0,
-        })
+        }))
     }
 
     fn get_directory(&self, cluster: u32) -> Result<Directory, Error> {
@@ -596,12 +623,12 @@ impl<'a> Filesystem<'a> {
         })
     }
 
-    pub fn open(&self, path: &str) -> Result<File, Error> {
+    pub fn open(&self, current_dir: &Directory, path: &str) -> Result<Node, Error> {
         assert_eq!(path.find('/').or_else(|| path.find('\\')), Some(0));
 
         let mut residual = path;
 
-        let mut current_dir = self.root().unwrap();
+        let mut current_dir = *current_dir;
         loop {
             // sub is the directory or file name
             // residual is what is left
