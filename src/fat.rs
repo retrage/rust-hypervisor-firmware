@@ -171,6 +171,13 @@ fn ucs2_to_ascii(input: &[u16]) -> [u8; 255] {
     output
 }
 
+fn is_absolute_path(path: &str) -> bool {
+    if path.starts_with('/') || path.starts_with('\\') {
+        return true;
+    }
+    false
+}
+
 impl<'a> Read for Node<'a> {
     fn read(&mut self, data: &mut [u8]) -> Result<u32, Error> {
         match self {
@@ -283,6 +290,15 @@ impl<'a> Directory<'a> {
             self.sector += 1;
             self.offset = 0;
         }
+    }
+    pub fn open(&self, path: &str) -> Result<Node, Error> {
+        let root = self.filesystem.root().unwrap();
+        let dir = if is_absolute_path(path) {
+            &root
+        } else {
+            self
+        };
+        self.filesystem.open_from(dir, path)
     }
 }
 
@@ -594,7 +610,7 @@ impl<'a> Filesystem<'a> {
         ((cluster - 2) * self.sectors_per_cluster) + self.first_data_sector
     }
 
-    pub fn root(&self) -> Result<Node, Error> {
+    pub fn root(&self) -> Result<Directory, Error> {
         match self.fat_type {
             FatType::FAT12 | FatType::FAT16 => {
                 let root_directory_start = self.first_data_sector - self.root_dir_sectors;
@@ -603,14 +619,14 @@ impl<'a> Filesystem<'a> {
                     cluster: None,
                     sector: root_directory_start,
                     offset: 0,
-                }.into())
+                })
             }
             FatType::FAT32 => Ok(Directory {
                 filesystem: self,
                 cluster: Some(self.root_cluster),
                 sector: 0,
                 offset: 0,
-            }.into()),
+            }),
             _ => Err(Error::Unsupported),
         }
     }
@@ -635,12 +651,24 @@ impl<'a> Filesystem<'a> {
         })
     }
 
-    pub fn open(&self, dir: &Directory, path: &str) -> Result<Node, Error> {
+    pub fn open(&self, path: &str) -> Result<Node, Error> {
+        // path must be absolute path
         assert_eq!(path.find('/').or_else(|| path.find('\\')), Some(0));
+        self.open_from(&self.root().unwrap(), path)
+    }
 
-        let mut residual = path;
+    fn open_from(&self, from: &Directory, path: &str) -> Result<Node, Error> {
+        assert!(path.len() < 260);
+        let mut p = [0_u8; 260];
+        let mut residual = if !is_absolute_path(path) {
+            p[0] = '/' as u8;
+            p[1..].clone_from_slice(path.as_bytes());
+            core::str::from_utf8(&p).unwrap()
+        } else {
+            path
+        };
 
-        let mut current_dir = *dir;
+        let mut current_dir = *from;
         loop {
             // sub is the directory or file name
             // residual is what is left
