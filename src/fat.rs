@@ -129,6 +129,18 @@ pub enum Node<'a> {
     Directory(Directory<'a>),
 }
 
+impl<'a> From<File::<'a>> for Node<'a> {
+    fn from(from: File<'a>) -> Node<'a> {
+        Node::File(from)
+    }
+}
+
+impl<'a> From<Directory::<'a>> for Node<'a> {
+    fn from(from: Directory<'a>) -> Node<'a> {
+        Node::Directory(from)
+    }
+}
+
 pub struct File<'a> {
     filesystem: &'a Filesystem<'a>,
     start_cluster: u32,
@@ -586,19 +598,19 @@ impl<'a> Filesystem<'a> {
         match self.fat_type {
             FatType::FAT12 | FatType::FAT16 => {
                 let root_directory_start = self.first_data_sector - self.root_dir_sectors;
-                Ok(Node::Directory(Directory {
+                Ok(Directory {
                     filesystem: self,
                     cluster: None,
                     sector: root_directory_start,
                     offset: 0,
-                }))
+                }.into())
             }
-            FatType::FAT32 => Ok(Node::Directory(Directory {
+            FatType::FAT32 => Ok(Directory {
                 filesystem: self,
                 cluster: Some(self.root_cluster),
                 sector: 0,
                 offset: 0,
-            })),
+            }.into()),
             _ => Err(Error::Unsupported),
         }
     }
@@ -660,7 +672,7 @@ impl<'a> Filesystem<'a> {
                                     current_dir = self.get_directory(de.cluster).unwrap();
                                     break;
                                 }
-                                FileType::File => return self.get_file(de.cluster, de.size),
+                                FileType::File => return Ok(self.get_file(de.cluster, de.size).unwrap().into()),
                             }
                         }
                     }
