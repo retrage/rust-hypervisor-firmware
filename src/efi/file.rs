@@ -34,8 +34,9 @@ pub extern "win64" fn filesystem_open_volume(
 ) -> Status {
     let wrapper = container_of!(fs_proto, FileSystemWrapper, proto);
     let wrapper = unsafe { &*wrapper };
+    let root = wrapper.fs.root().unwrap();
 
-    if let Some(fw) = wrapper.create_file(true) {
+    if let Some(fw) = wrapper.create_file(root.into()) {
         unsafe {
             *file = &mut (*fw).proto;
         }
@@ -55,12 +56,7 @@ pub extern "win64" fn open(
     let wrapper = container_of!(file_in, FileWrapper, proto);
     let wrapper = unsafe { &*wrapper };
 
-    if !wrapper.root {
-        log!("Attempt to open file from non-root file is unsupported");
-        return Status::UNSUPPORTED;
-    }
-
-    let current_dir = match &wrapper.node {
+    let dir = match &wrapper.node {
         crate::fat::Node::Directory(d) => d,
         _ => {
             log!("Attempt to open from non-directory file is unsupported");
@@ -72,12 +68,11 @@ pub extern "win64" fn open(
     crate::common::ucs2_to_ascii(path_in, &mut path[0..255]);
     let path = unsafe { core::str::from_utf8_unchecked(&path) };
 
-    match wrapper.fs.open(&current_dir, path) {
+    match dir.open(path) {
         Ok(f) => {
             let fs_wrapper = unsafe { &(*wrapper.fs_wrapper) };
-            if let Some(file_out_wrapper) = fs_wrapper.create_file(false) {
+            if let Some(file_out_wrapper) = fs_wrapper.create_file(f) {
                 unsafe {
-                    (*file_out_wrapper).node = f;
                     *file_out = &mut (*file_out_wrapper).proto;
                 }
                 Status::SUCCESS
@@ -203,7 +198,6 @@ struct FileWrapper<'a> {
     proto: FileProtocol,
     node: crate::fat::Node<'a>,
     fs_wrapper: *const FileSystemWrapper<'a>,
-    root: bool,
 }
 
 #[repr(C)]
@@ -215,7 +209,7 @@ pub struct FileSystemWrapper<'a> {
 }
 
 impl<'a> FileSystemWrapper<'a> {
-    fn create_file(&self, root: bool) -> Option<*mut FileWrapper> {
+    fn create_file(&self, node: crate::fat::Node<'a>) -> Option<*mut FileWrapper> {
         let size = core::mem::size_of::<FileWrapper>();
         let (status, new_address) = super::ALLOCATOR.borrow_mut().allocate_pages(
             AllocateType::AllocateAnyPages,
@@ -229,8 +223,7 @@ impl<'a> FileSystemWrapper<'a> {
             unsafe {
                 (*fw).fs = self.fs;
                 (*fw).fs_wrapper = self;
-                (*fw).node = self.fs.root().unwrap();
-                (*fw).root = root;
+                (*fw).node = node;
                 (*fw).proto.revision = r_efi::protocols::file::REVISION;
                 (*fw).proto.open = open;
                 (*fw).proto.close = close;

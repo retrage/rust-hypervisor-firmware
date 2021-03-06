@@ -108,14 +108,7 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn boot::Info
     }
     log!("Filesystem ready");
 
-    let root = match f.root().unwrap() {
-        fat::Node::Directory(d) => d,
-        _ => {
-            log!("Failed to get root directory");
-            return false;
-        },
-    };
-    match loader::load_default_entry(&f, &root, info) {
+    match loader::load_default_entry(&f, info) {
         Ok(mut kernel) => {
             log!("Jumping to kernel");
             kernel.boot();
@@ -125,7 +118,7 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn boot::Info
     }
 
     log!("Using EFI boot.");
-    let mut file = match f.open(&root, "/EFI/BOOT/BOOTX64 EFI") {
+    let mut file = match f.open("/EFI/BOOT/BOOTX64 EFI") {
         Ok(file) => file,
         Err(err) => {
             log!("Failed to load default EFI binary: {:?}", err);
