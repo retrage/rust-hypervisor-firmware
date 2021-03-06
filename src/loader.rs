@@ -158,6 +158,7 @@ pub fn load_default_entry(fs: &fat::Filesystem, info: &dyn boot::Info) -> Result
 mod tests {
     use crate::fat::Read;
     use crate::part::tests::FakeDisk;
+    use core::convert::TryInto;
 
     #[test]
     fn test_default_entry() {
@@ -166,7 +167,7 @@ mod tests {
         let mut fs = crate::fat::Filesystem::new(&d, start, end);
         fs.init().expect("Error initialising filesystem");
 
-        let mut f = fs.open("/loader/loader.conf").unwrap();
+        let mut f: crate::fat::File = fs.open("/loader/loader.conf").unwrap().try_into().unwrap();
         let s = super::default_entry_file(&mut f).unwrap();
         let s = super::ascii_strip(&s);
         assert_eq!(s, "Clear-linux-kvm-5.0.6-318");
@@ -179,7 +180,7 @@ mod tests {
             format!("/loader/entries/{}", s).as_str()
         );
 
-        let mut f = fs.open(default_entry_path).unwrap();
+        let mut f: crate::fat::File = fs.open(default_entry_path).unwrap().try_into().unwrap();
         let entry = super::parse_entry(&mut f).unwrap();
         let s = super::ascii_strip(&entry.bzimage_path);
         assert_eq!(s, "/EFI/org.clearlinux/kernel-org.clearlinux.kvm.5.0.6-318");
