@@ -603,15 +603,15 @@ impl<'a> Filesystem<'a> {
         }
     }
 
-    fn get_file(&self, cluster: u32, size: u32) -> Result<Node, Error> {
-        Ok(Node::File(File {
+    fn get_file(&self, cluster: u32, size: u32) -> Result<File, Error> {
+        Ok(File {
             filesystem: self,
             start_cluster: cluster,
             active_cluster: cluster,
             sector_offset: 0,
             size,
             position: 0,
-        }))
+        })
     }
 
     fn get_directory(&self, cluster: u32) -> Result<Directory, Error> {
