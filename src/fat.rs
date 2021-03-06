@@ -181,6 +181,17 @@ pub struct Directory<'a> {
     offset: usize,
 }
 
+fn str_as_ascii_length(input: &str) -> usize {
+    let mut len = 0;
+    for c in input.chars() {
+        if c == '\0' {
+            break;
+        }
+        len += 1;
+    }
+    len
+}
+
 fn ucs2_to_ascii(input: &[u16]) -> [u8; 255] {
     let mut output: [u8; 255] = [0; 255];
     let mut i: usize = 0;
@@ -681,11 +692,12 @@ impl<'a> Filesystem<'a> {
     }
 
     fn open_from(&self, from: &Directory, path: &str) -> Result<Node, Error> {
-        assert!(path.len() < 260);
-        let mut p = [0_u8; 260];
+        let len = str_as_ascii_length(path);
+        assert!(len < 256);
+        let mut p = [0_u8; 256];
         let mut residual = if !is_absolute_path(path) {
             p[0] = '/' as u8;
-            p[1..].clone_from_slice(path.as_bytes());
+            p[1..1+len].clone_from_slice(path[..len].as_bytes());
             core::str::from_utf8(&p).unwrap()
         } else {
             path
