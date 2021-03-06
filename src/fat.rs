@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use core::convert::TryFrom;
 use crate::{block::SectorRead, mem::MemoryRegion};
 
 #[repr(packed)]
@@ -138,6 +139,28 @@ impl<'a> From<File::<'a>> for Node<'a> {
 impl<'a> From<Directory::<'a>> for Node<'a> {
     fn from(from: Directory<'a>) -> Node<'a> {
         Node::Directory(from)
+    }
+}
+
+impl<'a> TryFrom<Node::<'a>> for File<'a> {
+    type Error = ();
+
+    fn try_from(from: Node<'a>) -> Result<Self, Self::Error> {
+        match from {
+            Node::File(f) => Ok(f),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<Node::<'a>> for Directory<'a> {
+    type Error = ();
+
+    fn try_from(from: Node<'a>) -> Result<Self, Self::Error> {
+        match from {
+            Node::Directory(d) => Ok(d),
+            _ => Err(()),
+        }
     }
 }
 
@@ -714,6 +737,7 @@ impl<'a> Filesystem<'a> {
 mod tests {
     use super::Read;
     use crate::part::tests::FakeDisk;
+    use core::convert::TryInto;
 
     #[test]
     fn test_fat_file_reads() {
@@ -729,7 +753,7 @@ mod tests {
                     let mut fs = crate::fat::Filesystem::new(&d, 0, len);
                     fs.init().expect("Error initialising filesystem");
                     let path = format!("/A/B/C/{}", v);
-                    let mut f = fs.open(&path).expect("Error opening file");
+                    let mut f: crate::fat::File = fs.open(&path).expect("Error opening file").try_into().unwrap();
 
                     assert_eq!(f.size, v);
 
@@ -767,7 +791,7 @@ mod tests {
                     let mut fs = crate::fat::Filesystem::new(&d, 0, len);
                     fs.init().expect("Error initialising filesystem");
                     let path = format!("/A/B/C/{}", v);
-                    let mut f = fs.open(&path).expect("Error opening file");
+                    let mut f: crate::fat::File = fs.open(&path).expect("Error opening file").try_into().unwrap();
 
                     assert_eq!(f.size, v);
 
@@ -852,7 +876,8 @@ mod tests {
                 let mut f = crate::fat::Filesystem::new(&d, start, end);
                 match f.init() {
                     Ok(()) => {
-                        let file = f.open("\\EFI\\BOOT\\BOOTX64.EFI").unwrap();
+                        let file: crate::fat::File = f.open("\\EFI\\BOOT\\BOOTX64.EFI").unwrap().try_into().unwrap();
+
                         assert_eq!(file.active_cluster, 166);
                         assert_eq!(file.size, 92789);
                     }
