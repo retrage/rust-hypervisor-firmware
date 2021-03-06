@@ -623,12 +623,12 @@ impl<'a> Filesystem<'a> {
         })
     }
 
-    pub fn open(&self, current_dir: &Directory, path: &str) -> Result<Node, Error> {
+    pub fn open(&self, dir: &Directory, path: &str) -> Result<Node, Error> {
         assert_eq!(path.find('/').or_else(|| path.find('\\')), Some(0));
 
         let mut residual = path;
 
-        let mut current_dir = *current_dir;
+        let mut current_dir = *dir;
         loop {
             // sub is the directory or file name
             // residual is what is left
