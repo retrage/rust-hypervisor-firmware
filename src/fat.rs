@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use core::convert::TryFrom;
 use crate::{block::SectorRead, mem::MemoryRegion};
+use core::convert::TryFrom;
 
 #[repr(packed)]
 struct Header {
@@ -130,19 +130,19 @@ pub enum Node<'a> {
     Directory(Directory<'a>),
 }
 
-impl<'a> From<File::<'a>> for Node<'a> {
+impl<'a> From<File<'a>> for Node<'a> {
     fn from(from: File<'a>) -> Node<'a> {
         Node::File(from)
     }
 }
 
-impl<'a> From<Directory::<'a>> for Node<'a> {
+impl<'a> From<Directory<'a>> for Node<'a> {
     fn from(from: Directory<'a>) -> Node<'a> {
         Node::Directory(from)
     }
 }
 
-impl<'a> TryFrom<Node::<'a>> for File<'a> {
+impl<'a> TryFrom<Node<'a>> for File<'a> {
     type Error = ();
 
     fn try_from(from: Node<'a>) -> Result<Self, Self::Error> {
@@ -153,7 +153,7 @@ impl<'a> TryFrom<Node::<'a>> for File<'a> {
     }
 }
 
-impl<'a> TryFrom<Node::<'a>> for Directory<'a> {
+impl<'a> TryFrom<Node<'a>> for Directory<'a> {
     type Error = ();
 
     fn try_from(from: Node<'a>) -> Result<Self, Self::Error> {
@@ -327,11 +327,7 @@ impl<'a> Directory<'a> {
     }
     pub fn open(&self, path: &str) -> Result<Node, Error> {
         let root = self.filesystem.root().unwrap();
-        let dir = if is_absolute_path(path) {
-            &root
-        } else {
-            self
-        };
+        let dir = if is_absolute_path(path) { &root } else { self };
         self.filesystem.open_from(dir, path)
     }
 }
@@ -701,7 +697,7 @@ impl<'a> Filesystem<'a> {
         let mut p = [0_u8; 256];
         let mut residual = if !is_absolute_path(path) {
             p[0] = b'/';
-            p[1..1+len].clone_from_slice(path[..len].as_bytes());
+            p[1..1 + len].clone_from_slice(path[..len].as_bytes());
             core::str::from_utf8(&p).unwrap()
         } else {
             path
@@ -719,7 +715,7 @@ impl<'a> Filesystem<'a> {
                     let sub = &residual[1..];
                     residual = "";
                     sub
-                },
+                }
                 Some(x) => {
                     // +1 due to above find working on substring
                     let sub = &residual[1..=*x];
@@ -741,12 +737,14 @@ impl<'a> Filesystem<'a> {
                             match de.file_type {
                                 FileType::Directory => {
                                     if residual.is_empty() {
-                                        return Ok(self.get_directory(de.cluster).unwrap().into())
+                                        return Ok(self.get_directory(de.cluster).unwrap().into());
                                     }
                                     current_dir = self.get_directory(de.cluster).unwrap();
                                     break;
                                 }
-                                FileType::File => return Ok(self.get_file(de.cluster, de.size).unwrap().into()),
+                                FileType::File => {
+                                    return Ok(self.get_file(de.cluster, de.size).unwrap().into())
+                                }
                             }
                         }
                     }
@@ -776,7 +774,11 @@ mod tests {
                     let mut fs = crate::fat::Filesystem::new(&d, 0, len);
                     fs.init().expect("Error initialising filesystem");
                     let path = format!("/A/B/C/{}", v);
-                    let mut f: crate::fat::File = fs.open(&path).expect("Error opening file").try_into().unwrap();
+                    let mut f: crate::fat::File = fs
+                        .open(&path)
+                        .expect("Error opening file")
+                        .try_into()
+                        .unwrap();
 
                     assert_eq!(f.size, v);
 
@@ -814,7 +816,11 @@ mod tests {
                     let mut fs = crate::fat::Filesystem::new(&d, 0, len);
                     fs.init().expect("Error initialising filesystem");
                     let path = format!("/A/B/C/{}", v);
-                    let mut f: crate::fat::File = fs.open(&path).expect("Error opening file").try_into().unwrap();
+                    let mut f: crate::fat::File = fs
+                        .open(&path)
+                        .expect("Error opening file")
+                        .try_into()
+                        .unwrap();
 
                     assert_eq!(f.size, v);
 
@@ -899,7 +905,11 @@ mod tests {
                 let mut f = crate::fat::Filesystem::new(&d, start, end);
                 match f.init() {
                     Ok(()) => {
-                        let file: crate::fat::File = f.open("\\EFI\\BOOT\\BOOTX64.EFI").unwrap().try_into().unwrap();
+                        let file: crate::fat::File = f
+                            .open("\\EFI\\BOOT\\BOOTX64.EFI")
+                            .unwrap()
+                            .try_into()
+                            .unwrap();
 
                         assert_eq!(file.active_cluster, 166);
                         assert_eq!(file.size, 92789);
