@@ -456,7 +456,7 @@ impl<'a> SectorRead for Filesystem<'a> {
 // In the FAT directory entry the "." isn't stored and any gaps are padded with " ".
 fn compare_short_name(name: &str, de: &DirectoryEntry) -> bool {
     // 8.3 (plus 1 for the separator)
-    if name.len() > 12 {
+    if str_as_ascii_length(name) > 12 {
         return false;
     }
 
@@ -465,6 +465,10 @@ fn compare_short_name(name: &str, de: &DirectoryEntry) -> bool {
         // Handle cases which are 11 long but not 8.3 (e.g "loader.conf")
         if i == 11 {
             return false;
+        }
+
+        if *a == b'\0' {
+            break;
         }
 
         // Jump to the extension
@@ -696,7 +700,7 @@ impl<'a> Filesystem<'a> {
         assert!(len < 256);
         let mut p = [0_u8; 256];
         let mut residual = if !is_absolute_path(path) {
-            p[0] = '/' as u8;
+            p[0] = b'/';
             p[1..1+len].clone_from_slice(path[..len].as_bytes());
             core::str::from_utf8(&p).unwrap()
         } else {
@@ -711,7 +715,11 @@ impl<'a> Filesystem<'a> {
                 .find('/')
                 .or_else(|| (&residual[1..]).find('\\'))
             {
-                None => &residual[1..],
+                None => {
+                    let sub = &residual[1..];
+                    residual = "";
+                    sub
+                },
                 Some(x) => {
                     // +1 due to above find working on substring
                     let sub = &residual[1..=*x];
@@ -732,6 +740,9 @@ impl<'a> Filesystem<'a> {
                         if compare_name(sub, &de) {
                             match de.file_type {
                                 FileType::Directory => {
+                                    if residual.is_empty() {
+                                        return Ok(self.get_directory(de.cluster).unwrap().into())
+                                    }
                                     current_dir = self.get_directory(de.cluster).unwrap();
                                     break;
                                 }
