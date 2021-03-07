@@ -194,6 +194,7 @@ pub extern "win64" fn flush(_: *mut FileProtocol) -> Status {
 }
 
 struct FileWrapper<'a> {
+    #[allow(unused)]
     fs: &'a crate::fat::Filesystem<'a>,
     proto: FileProtocol,
     node: crate::fat::Node<'a>,
