@@ -61,7 +61,7 @@ pub extern "win64" fn open(
         _ => {
             log!("Attempt to open from non-directory file is unsupported");
             return Status::UNSUPPORTED;
-        },
+        }
     };
 
     let mut path = [0; 256];
