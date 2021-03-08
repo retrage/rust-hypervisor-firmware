@@ -325,6 +325,22 @@ impl<'a> Directory<'a> {
             self.offset = 0;
         }
     }
+    pub fn next_node(&mut self) -> Result<Node, Error> {
+        let de = self.next_entry()?;
+        match de.file_type {
+            FileType::Directory => Ok((
+                self.filesystem.get_directory(de.cluster).unwrap().into(),
+                name,
+            )),
+            FileType::File => Ok((
+                self.filesystem
+                    .get_file(de.cluster, de.size)
+                    .unwrap()
+                    .into(),
+                name,
+            )),
+        }
+    }
     pub fn open(&self, path: &str) -> Result<Node, Error> {
         let root = self.filesystem.root().unwrap();
         let dir = if is_absolute_path(path) { &root } else { self };

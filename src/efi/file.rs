@@ -96,13 +96,48 @@ pub extern "win64" fn delete(_: *mut FileProtocol) -> Status {
 }
 
 pub extern "win64" fn read(file: *mut FileProtocol, size: *mut usize, buf: *mut c_void) -> Status {
+    use crate::fat::Read;
     let wrapper = container_of_mut!(file, FileWrapper, proto);
+    if let crate::fat::Node::Directory(d) = unsafe { &mut (*wrapper).node } {
+        if unsafe { *size } < core::mem::size_of::<FileInfo>() {
+            unsafe { *size = core::mem::size_of::<FileInfo>() };
+            return Status::BUFFER_TOO_SMALL;
+        }
+
+        let node = match d.next_node() {
+            Ok(node) => node,
+            Err(crate::fat::Error::EndOfFile) => {
+                unsafe { *size = 0 };
+                return Status::SUCCESS;
+            }
+            Err(_) => return Status::DEVICE_ERROR,
+        };
+        let mut attribute = r_efi::protocols::file::READ_ONLY;
+        if let crate::fat::Node::Directory(_) = &node {
+            attribute |= r_efi::protocols::file::DIRECTORY;
+        }
+
+        let info = buf as *mut FileInfo;
+
+        unsafe {
+            (*info).size = core::mem::size_of::<FileInfo>() as u64;
+            (*info).file_size = node.get_size().into();
+            (*info).physical_size = node.get_size().into();
+            (*info).attribute = attribute;
+        }
+
+        return Status::SUCCESS;
+    }
+
+    if unsafe { *size } < unsafe { (*wrapper).node.get_size() as usize } {
+        unsafe { *size = (*wrapper).node.get_size() as usize };
+        return Status::BUFFER_TOO_SMALL;
+    }
 
     let mut current_offset = 0;
     let mut bytes_remaining = unsafe { *size };
 
     loop {
-        use crate::fat::Read;
         let buf = unsafe { core::slice::from_raw_parts_mut(buf as *mut u8, *size) };
 
         let mut data: [u8; 512] = [0; 512];
