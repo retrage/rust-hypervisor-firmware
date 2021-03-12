@@ -105,7 +105,7 @@ pub extern "win64" fn read(file: *mut FileProtocol, size: *mut usize, buf: *mut 
             return Status::BUFFER_TOO_SMALL;
         }
 
-        let node = match d.next_node() {
+        let (node, name) = match d.next_node() {
             Ok(node) => node,
             Err(crate::fat::Error::EndOfFile) => {
                 unsafe { *size = 0 };
@@ -113,18 +113,20 @@ pub extern "win64" fn read(file: *mut FileProtocol, size: *mut usize, buf: *mut 
             },
             Err(_) => return Status::DEVICE_ERROR,
         };
-        let mut attribute = r_efi::protocols::file::READ_ONLY;
-        if let crate::fat::Node::Directory(_) = &node {
-            attribute |= r_efi::protocols::file::DIRECTORY;
-        }
+        let attribute = match &node {
+            crate::fat::Node::Directory(_) => r_efi::protocols::file::DIRECTORY,
+            crate::fat::Node::File(_) => r_efi::protocols::file::ARCHIVE,
+        };
 
         let info = buf as *mut FileInfo;
 
+        let name = crate::common::ascii_strip(&name);
         unsafe {
             (*info).size = core::mem::size_of::<FileInfo>() as u64;
             (*info).file_size = node.get_size().into();
             (*info).physical_size = node.get_size().into();
             (*info).attribute = attribute;
+            crate::common::ascii_to_ucs2(name, &mut (*info).file_name);
         }
 
         return Status::SUCCESS;
@@ -184,7 +186,7 @@ struct FileInfo {
     _last_access_time: r_efi::system::Time,
     _modification_time: r_efi::system::Time,
     attribute: u64,
-    _file_name: [Char16; 256],
+    file_name: [Char16; 256],
 }
 
 pub extern "win64" fn get_info(
