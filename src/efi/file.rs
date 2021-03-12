@@ -113,10 +113,10 @@ pub extern "win64" fn read(file: *mut FileProtocol, size: *mut usize, buf: *mut 
             }
             Err(_) => return Status::DEVICE_ERROR,
         };
-        let mut attribute = r_efi::protocols::file::READ_ONLY;
-        if let crate::fat::Node::Directory(_) = &node {
-            attribute |= r_efi::protocols::file::DIRECTORY;
-        }
+        let attribute = match &node {
+            crate::fat::Node::Directory(_) => r_efi::protocols::file::DIRECTORY,
+            crate::fat::Node::File(_) => r_efi::protocols::file::ARCHIVE,
+        };
 
         let info = buf as *mut FileInfo;
 
@@ -201,12 +201,16 @@ pub extern "win64" fn get_info(
             let info = info as *mut FileInfo;
 
             let wrapper = container_of!(file, FileWrapper, proto);
+            let attribute = match unsafe { &(*wrapper).node } {
+                crate::fat::Node::Directory(_) => r_efi::protocols::file::DIRECTORY,
+                crate::fat::Node::File(_) => r_efi::protocols::file::ARCHIVE,
+            };
             use crate::fat::Read;
             unsafe {
                 (*info).size = core::mem::size_of::<FileInfo>() as u64;
                 (*info).file_size = (*wrapper).node.get_size().into();
                 (*info).physical_size = (*wrapper).node.get_size().into();
-                (*info).attribute = r_efi::protocols::file::MODE_READ;
+                (*info).attribute = attribute;
             }
 
             Status::SUCCESS
