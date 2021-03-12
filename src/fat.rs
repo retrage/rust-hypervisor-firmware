@@ -334,12 +334,17 @@ impl<'a> Directory<'a> {
             name[..de.name.len()].clone_from_slice(&de.name);
         }
         match de.file_type {
-            FileType::Directory => {
-                Ok((self.filesystem.get_directory(de.cluster).unwrap().into(), name))
-            }
-            FileType::File => {
-                Ok((self.filesystem.get_file(de.cluster, de.size).unwrap().into(), name))
-            }
+            FileType::Directory => Ok((
+                self.filesystem.get_directory(de.cluster).unwrap().into(),
+                name,
+            )),
+            FileType::File => Ok((
+                self.filesystem
+                    .get_file(de.cluster, de.size)
+                    .unwrap()
+                    .into(),
+                name,
+            )),
         }
     }
     pub fn open(&self, path: &str) -> Result<Node, Error> {

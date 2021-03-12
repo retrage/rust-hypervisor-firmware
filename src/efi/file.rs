@@ -110,7 +110,7 @@ pub extern "win64" fn read(file: *mut FileProtocol, size: *mut usize, buf: *mut 
             Err(crate::fat::Error::EndOfFile) => {
                 unsafe { *size = 0 };
                 return Status::SUCCESS;
-            },
+            }
             Err(_) => return Status::DEVICE_ERROR,
         };
         let attribute = match &node {
