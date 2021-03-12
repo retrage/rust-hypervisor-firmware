@@ -80,6 +80,7 @@ pub extern "win64" fn open(
                 Status::DEVICE_ERROR
             }
         }
+        Err(crate::fat::Error::NotFound) => Status::NOT_FOUND,
         Err(_) => Status::DEVICE_ERROR,
     }
 }
