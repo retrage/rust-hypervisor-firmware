@@ -228,7 +228,7 @@ impl<'a> Read for Node<'a> {
     fn get_size(&self) -> u32 {
         match self {
             Self::File(file) => file.get_size(),
-            Self::Directory(_) => 0_u32,
+            Self::Directory(_) => 512_u32,
         }
     }
 }
