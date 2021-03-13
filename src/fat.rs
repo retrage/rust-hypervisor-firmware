@@ -181,17 +181,6 @@ pub struct Directory<'a> {
     offset: usize,
 }
 
-fn str_as_ascii_length(input: &str) -> usize {
-    let mut len = 0;
-    for c in input.chars() {
-        if c == '\0' {
-            break;
-        }
-        len += 1;
-    }
-    len
-}
-
 fn ucs2_to_ascii(input: &[u16]) -> [u8; 255] {
     let mut output: [u8; 255] = [0; 255];
     let mut i: usize = 0;
@@ -474,7 +463,7 @@ impl<'a> SectorRead for Filesystem<'a> {
 // In the FAT directory entry the "." isn't stored and any gaps are padded with " ".
 fn compare_short_name(name: &str, de: &DirectoryEntry) -> bool {
     // 8.3 (plus 1 for the separator)
-    if str_as_ascii_length(name) > 12 {
+    if crate::common::ascii_length(name) > 12 {
         return false;
     }
 
@@ -714,7 +703,7 @@ impl<'a> Filesystem<'a> {
     }
 
     fn open_from(&self, from: &Directory, path: &str) -> Result<Node, Error> {
-        let len = str_as_ascii_length(path);
+        let len = crate::common::ascii_length(path);
         assert!(len < 256);
         let mut p = [0_u8; 256];
         let mut residual = if !is_absolute_path(path) {
