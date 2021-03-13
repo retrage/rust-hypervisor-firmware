@@ -325,8 +325,14 @@ impl<'a> Directory<'a> {
             self.offset = 0;
         }
     }
-    pub fn next_node(&mut self) -> Result<Node, Error> {
+    pub fn next_node(&mut self) -> Result<(Node, [u8; 255]), Error> {
         let de = self.next_entry()?;
+        let mut name = [0_u8; 255];
+        if !crate::common::ascii_strip(&de.long_name).is_empty() {
+            name = de.long_name;
+        } else {
+            name[..de.name.len()].clone_from_slice(&de.name);
+        }
         match de.file_type {
             FileType::Directory => Ok((
                 self.filesystem.get_directory(de.cluster).unwrap().into(),
