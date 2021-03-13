@@ -173,7 +173,10 @@ pub extern "win64" fn get_position(_: *mut FileProtocol, _: *mut u64) -> Status 
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn set_position(_: *mut FileProtocol, _: u64) -> Status {
+pub extern "win64" fn set_position(_: *mut FileProtocol, position: u64) -> Status {
+    if position == 0 {
+        return Status::SUCCESS;
+    }
     Status::UNSUPPORTED
 }
 
