@@ -390,6 +390,8 @@ mod tests {
 
     const BIONIC_IMAGE_NAME: &str = "bionic-server-cloudimg-amd64-raw.img";
     const FOCAL_IMAGE_NAME: &str = "focal-server-cloudimg-amd64-raw.img";
+    const VANILLA_BIONIC: &str = "vanilla-bionic-server-cloudimg-amd64-raw.img";
+    const VANILLA_FOCAL: &str = "vanilla-focal-server-cloudimg-amd64-raw.img";
     const CLEAR_IMAGE_NAME: &str = "clear-31311-cloudguest.img";
 
     #[test]
@@ -398,9 +400,20 @@ mod tests {
     }
 
     // Does not currently work:
-    // #[test]
+    #[test]
     fn test_boot_qemu_focal() {
         test_boot(FOCAL_IMAGE_NAME, &UbuntuCloudInit {}, spawn_qemu)
+    }
+
+    #[test]
+    fn test_boot_qemu_vanilla_bionic() {
+        test_boot(VANILLA_BIONIC, &UbuntuCloudInit {}, spawn_qemu)
+    }
+
+    // Does not currently work:
+    #[test]
+    fn test_boot_qemu_vanilla_focal() {
+        test_boot(VANILLA_FOCAL, &UbuntuCloudInit {}, spawn_qemu)
     }
 
     #[test]
@@ -418,6 +431,18 @@ mod tests {
     #[cfg(not(feature = "coreboot"))]
     fn test_boot_ch_focal() {
         test_boot(FOCAL_IMAGE_NAME, &UbuntuCloudInit {}, spawn_ch)
+    }
+
+    #[test]
+    #[cfg(not(feature = "coreboot"))]
+    fn test_boot_ch_vanilla_bionic() {
+        test_boot(VANILLA_BIONIC, &UbuntuCloudInit {}, spawn_ch)
+    }
+
+    #[test]
+    #[cfg(not(feature = "coreboot"))]
+    fn test_boot_ch_vanilla_focal() {
+        test_boot(VANILLA_FOCAL, &UbuntuCloudInit {}, spawn_ch)
     }
 
     #[test]
