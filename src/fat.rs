@@ -218,11 +218,11 @@ fn name_to_str(input: &str, output: &mut [u8]) {
             b' ' => {
                 i = 8;
                 b'.'
-            },
+            }
             c => {
                 i += 1;
                 c
-            },
+            }
         };
         if i >= len {
             break;

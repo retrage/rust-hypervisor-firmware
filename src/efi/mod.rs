@@ -571,7 +571,8 @@ pub extern "win64" fn load_image(
         Ok(()) => crate::common::ascii_strip(&path),
     };
     let loaded_image = parent_image_handle as *const LoadedImageWrapper;
-    let wrapped_fs = unsafe { &*((*loaded_image).proto.device_handle as *const file::FileSystemWrapper) };
+    let wrapped_fs =
+        unsafe { &*((*loaded_image).proto.device_handle as *const file::FileSystemWrapper) };
     let mut file = match wrapped_fs.fs.open(path) {
         Ok(file) => file,
         Err(crate::fat::Error::NotFound) => return Status::NOT_FOUND,
@@ -594,7 +595,8 @@ pub extern "win64" fn load_image(
         Err(_) => return Status::DEVICE_ERROR,
     };
 
-    let image_handle_size = align_up_u64(core::mem::size_of::<LoadedImageWrapper>() as u64, PAGE_SIZE);
+    let image_handle_size =
+        align_up_u64(core::mem::size_of::<LoadedImageWrapper>() as u64, PAGE_SIZE);
     let (status, image_handle_addr) = ALLOCATOR.borrow_mut().allocate_pages(
         AllocateType::AllocateAnyPages,
         MemoryType::LoaderCode,
@@ -627,7 +629,9 @@ pub extern "win64" fn load_image(
     crate::common::ascii_to_ucs2(path, &mut file_paths[0].filename);
 
     let image = unsafe { &mut *(image_handle_addr as *mut LoadedImageWrapper) };
-    image.hw = HandleWrapper { handle_type: HandleType::LoadedImage };
+    image.hw = HandleWrapper {
+        handle_type: HandleType::LoadedImage,
+    };
     image.proto = LoadedImageProtocol {
         revision: r_efi::protocols::loaded_image::REVISION,
         parent_handle: parent_image_handle,
@@ -650,7 +654,11 @@ pub extern "win64" fn load_image(
     Status::SUCCESS
 }
 
-pub extern "win64" fn start_image(image_handle: Handle, _: *mut usize, _: *mut *mut Char16) -> Status {
+pub extern "win64" fn start_image(
+    image_handle: Handle,
+    _: *mut usize,
+    _: *mut *mut Char16,
+) -> Status {
     let wrapped_handle = image_handle as *const LoadedImageWrapper;
     let address = unsafe { (*wrapped_handle).entry_point };
     let ptr = address as *const ();
@@ -836,14 +844,13 @@ extern "win64" fn image_unload(_: Handle) -> Status {
 fn get_file_path(device_path: &DevicePathProtocol, file_path: &mut [u8]) -> Result<(), Status> {
     let mut dp = device_path;
     loop {
-        if dp.r#type == r_efi::protocols::device_path::TYPE_MEDIA
-            && dp.sub_type == 0x04 {
-            let path = (dp as *const _ as u64 + core::mem::size_of::<DevicePathProtocol>() as u64) as *const u16;
+        if dp.r#type == r_efi::protocols::device_path::TYPE_MEDIA && dp.sub_type == 0x04 {
+            let path = (dp as *const _ as u64 + core::mem::size_of::<DevicePathProtocol>() as u64)
+                as *const u16;
             crate::common::ucs2_to_ascii(path, file_path);
             return Ok(());
         }
-        if dp.r#type == r_efi::protocols::device_path::TYPE_END
-            && dp.sub_type == 0xff {
+        if dp.r#type == r_efi::protocols::device_path::TYPE_END && dp.sub_type == 0xff {
             return Err(Status::NOT_FOUND);
         }
         let len = unsafe { core::mem::transmute::<[u8; 2], u16>(dp.length) };
