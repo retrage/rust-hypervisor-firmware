@@ -552,15 +552,102 @@ pub extern "win64" fn install_configuration_table(_: *mut Guid, _: *mut c_void) 
     Status::UNSUPPORTED
 }
 
+fn align_up_u64(value: u64, align: u64) -> u64 {
+    (value + align - 1) & !(align - 1)
+}
+
 pub extern "win64" fn load_image(
-    _: Boolean,
-    _: Handle,
-    _: *mut DevicePathProtocol,
-    _: *mut c_void,
-    _: usize,
-    _: *mut Handle,
+    _boot_policy: Boolean,
+    parent_image_handle: Handle,
+    device_path: *mut DevicePathProtocol,
+    _source_buffer: *mut c_void,
+    _source_size: usize,
+    image_handle: *mut Handle,
 ) -> Status {
-    Status::UNSUPPORTED
+    use crate::fat::Read;
+    let mut path = [0_u8; 256];
+    let path = match get_file_path(unsafe { &*device_path }, &mut path) {
+        Err(e) => return e,
+        Ok(()) => crate::common::ascii_strip(&path),
+    };
+    let loaded_image = parent_image_handle as *const LoadedImageWrapper;
+    let wrapped_fs = unsafe { &*((*loaded_image).proto.device_handle as *const file::FileSystemWrapper) };
+    let mut file = match wrapped_fs.fs.open(path) {
+        Ok(file) => file,
+        Err(crate::fat::Error::NotFound) => return Status::NOT_FOUND,
+        Err(e) => return Status::DEVICE_ERROR,
+    };
+
+    let image_size = align_up_u64(file.get_size() as u64, PAGE_SIZE);
+    let (status, load_addr) = ALLOCATOR.borrow_mut().allocate_pages(
+        AllocateType::AllocateAnyPages,
+        MemoryType::LoaderCode,
+        image_size / PAGE_SIZE,
+        0,
+    );
+    if status != Status::SUCCESS {
+        return status;
+    }
+    let mut l = crate::pe::Loader::new(&mut file);
+    let (entry_addr, load_addr, load_size) = match l.load(load_addr) {
+        Ok(load_info) => load_info,
+        Err(err) => return Status::DEVICE_ERROR,
+    };
+
+    let image_handle_size = align_up_u64(core::mem::size_of::<LoadedImageWrapper>() as u64, PAGE_SIZE);
+    let (status, image_handle_addr) = ALLOCATOR.borrow_mut().allocate_pages(
+        AllocateType::AllocateAnyPages,
+        MemoryType::LoaderCode,
+        image_handle_size / PAGE_SIZE,
+        0,
+    );
+    if status != Status::SUCCESS {
+        return status;
+    }
+
+    let mut file_paths = [
+        file::FileDevicePathProtocol {
+            device_path: DevicePathProtocol {
+                r#type: r_efi::protocols::device_path::TYPE_MEDIA,
+                sub_type: 4,
+                length: [132, 0],
+            },
+            filename: [0; 64],
+        },
+        file::FileDevicePathProtocol {
+            device_path: DevicePathProtocol {
+                r#type: r_efi::protocols::device_path::TYPE_END,
+                sub_type: 0xff,
+                length: [132, 0],
+            },
+            filename: [0; 64],
+        },
+    ];
+
+    crate::common::ascii_to_ucs2(path, &mut file_paths[0].filename);
+
+    let image = unsafe { &mut *(image_handle_addr as *mut LoadedImageWrapper) };
+    image.hw = HandleWrapper { handle_type: HandleType::LoadedImage };
+    image.proto = LoadedImageProtocol {
+        revision: r_efi::protocols::loaded_image::REVISION,
+        parent_handle: parent_image_handle,
+        system_table: unsafe { &mut ST },
+        device_handle: &wrapped_fs as *const _ as Handle,
+        file_path: &mut file_paths[0].device_path,
+        load_options_size: 0,
+        load_options: core::ptr::null_mut(),
+        image_base: load_addr as *mut _,
+        image_size: load_size,
+        image_code_type: efi::MemoryType::LoaderCode,
+        image_data_type: efi::MemoryType::LoaderData,
+        unload: image_unload,
+        reserved: core::ptr::null_mut(),
+    };
+    image.entry_point = entry_addr;
+
+    unsafe { *image_handle = image as *mut _ as u64 as *mut c_void };
+
+    Status::SUCCESS
 }
 
 pub extern "win64" fn start_image(_: Handle, _: *mut usize, _: *mut *mut Char16) -> Status {
@@ -741,6 +828,24 @@ extern "win64" fn image_unload(_: Handle) -> Status {
     efi::Status::UNSUPPORTED
 }
 
+fn get_file_path(device_path: &DevicePathProtocol, file_path: &mut [u8]) -> Result<(), Status> {
+    let mut dp = device_path;
+    loop {
+        if dp.r#type == r_efi::protocols::device_path::TYPE_MEDIA
+            && dp.sub_type == 0x04 {
+            let path = (dp as *const _ as u64 + core::mem::size_of::<DevicePathProtocol>() as u64) as *const u16;
+            crate::common::ucs2_to_ascii(path, file_path);
+            return Ok(());
+        }
+        if dp.r#type == r_efi::protocols::device_path::TYPE_END
+            && dp.sub_type == 0xff {
+            return Err(Status::NOT_FOUND);
+        }
+        let len = unsafe { core::mem::transmute::<[u8; 2], u16>(dp.length) };
+        dp = unsafe { &*((dp as *const _ as u64 + len as u64) as *const _) };
+    }
+}
+
 const PAGE_SIZE: u64 = 4096;
 const HEAP_SIZE: usize = 256 * 1024 * 1024;
 
@@ -799,6 +904,7 @@ fn init_heap_allocator(_: usize) {}
 struct LoadedImageWrapper {
     hw: HandleWrapper,
     proto: LoadedImageProtocol,
+    entry_point: u64,
 }
 
 pub fn efi_exec(
@@ -895,6 +1001,7 @@ pub fn efi_exec(
             unload: image_unload,
             reserved: core::ptr::null_mut(),
         },
+        entry_point: address,
     };
 
     let ptr = address as *const ();
