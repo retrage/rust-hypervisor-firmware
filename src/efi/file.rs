@@ -56,17 +56,22 @@ pub extern "win64" fn open(
     let wrapper = container_of!(file_in, FileWrapper, proto);
     let wrapper = unsafe { &*wrapper };
 
-    let dir = match &wrapper.node {
-        crate::fat::Node::Directory(d) => d,
-        _ => {
-            log!("Attempt to open from non-directory file is unsupported");
-            return Status::UNSUPPORTED;
-        }
-    };
-
     let mut path = [0; 256];
     crate::common::ucs2_to_ascii(path_in, &mut path[0..255]);
     let path = unsafe { core::str::from_utf8_unchecked(&path) };
+
+    let root = wrapper.fs.root().unwrap();
+    let dir = if crate::fat::is_absolute_path(path) {
+        &root
+    } else {
+        match &wrapper.node {
+            crate::fat::Node::Directory(d) => d,
+            _ => {
+                log!("Attempt to open from non-directory is unsupported");
+                return Status::UNSUPPORTED;
+            }
+        }
+    };
 
     match dir.open(path) {
         Ok(f) => {
