@@ -105,11 +105,6 @@ pub extern "win64" fn read(file: *mut FileProtocol, size: *mut usize, buf: *mut 
     use crate::fat::Read;
     let wrapper = container_of_mut!(file, FileWrapper, proto);
     if let crate::fat::Node::Directory(d) = unsafe { &mut (*wrapper).node } {
-        if unsafe { *size } < core::mem::size_of::<FileInfo>() {
-            unsafe { *size = core::mem::size_of::<FileInfo>() };
-            return Status::BUFFER_TOO_SMALL;
-        }
-
         let (node, name) = match d.next_node() {
             Ok(node) => node,
             Err(crate::fat::Error::EndOfFile) => {
@@ -118,6 +113,12 @@ pub extern "win64" fn read(file: *mut FileProtocol, size: *mut usize, buf: *mut 
             }
             Err(_) => return Status::DEVICE_ERROR,
         };
+
+        if unsafe { *size } < core::mem::size_of::<FileInfo>() {
+            unsafe { *size = core::mem::size_of::<FileInfo>() };
+            return Status::BUFFER_TOO_SMALL;
+        }
+
         let attribute = match &node {
             crate::fat::Node::Directory(_) => r_efi::protocols::file::DIRECTORY,
             crate::fat::Node::File(_) => r_efi::protocols::file::ARCHIVE,
