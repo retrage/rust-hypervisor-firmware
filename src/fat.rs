@@ -194,7 +194,7 @@ fn ucs2_to_ascii(input: &[u16]) -> [u8; 255] {
     output
 }
 
-fn is_absolute_path(path: &str) -> bool {
+pub fn is_absolute_path(path: &str) -> bool {
     if path.starts_with('/') || path.starts_with('\\') {
         return true;
     }
@@ -698,7 +698,7 @@ impl<'a> Filesystem<'a> {
 
     pub fn open(&self, path: &str) -> Result<Node, Error> {
         // path must be absolute path
-        assert_eq!(path.find('/').or_else(|| path.find('\\')), Some(0));
+        assert_eq!(is_absolute_path(path), true);
         self.open_from(&self.root().unwrap(), path)
     }
 
