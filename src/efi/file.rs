@@ -163,9 +163,7 @@ pub extern "win64" fn read(file: *mut FileProtocol, size: *mut usize, buf: *mut 
                     }
                     bytes_remaining -= bytes_read as usize;
                 }
-                Err(_) => {
-                    return Status::DEVICE_ERROR;
-                }
+                Err(_) => return Status::DEVICE_ERROR,
             }
         }
     }
