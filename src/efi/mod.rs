@@ -575,7 +575,7 @@ pub extern "win64" fn load_image(
     let mut file = match wrapped_fs.fs.open(path) {
         Ok(file) => file,
         Err(crate::fat::Error::NotFound) => return Status::NOT_FOUND,
-        Err(e) => return Status::DEVICE_ERROR,
+        Err(_) => return Status::DEVICE_ERROR,
     };
 
     let image_size = align_up_u64(file.get_size() as u64, PAGE_SIZE);
@@ -591,7 +591,7 @@ pub extern "win64" fn load_image(
     let mut l = crate::pe::Loader::new(&mut file);
     let (entry_addr, load_addr, load_size) = match l.load(load_addr) {
         Ok(load_info) => load_info,
-        Err(err) => return Status::DEVICE_ERROR,
+        Err(_) => return Status::DEVICE_ERROR,
     };
 
     let image_handle_size = align_up_u64(core::mem::size_of::<LoadedImageWrapper>() as u64, PAGE_SIZE);
