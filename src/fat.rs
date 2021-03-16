@@ -211,7 +211,7 @@ impl<'a> Read for Node<'a> {
     fn seek(&mut self, position: u32) -> Result<(), Error> {
         match self {
             Self::File(file) => file.seek(position),
-            Self::Directory(_) => Err(Error::Unsupported),
+            Self::Directory(directory) => directory.seek(position),
         }
     }
     fn get_size(&self) -> u32 {
@@ -344,7 +344,6 @@ impl<'a> Directory<'a> {
 
     pub fn seek(&mut self, offset: u32) -> Result<(), Error> {
         assert_eq!(offset, 0);
-        self.sector = 0;
         self.offset = 0;
         Ok(())
     }
