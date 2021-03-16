@@ -341,6 +341,13 @@ impl<'a> Directory<'a> {
         let dir = if is_absolute_path(path) { &root } else { self };
         self.filesystem.open_from(dir, path)
     }
+
+    pub fn seek(&mut self, offset: u32) -> Result<(), Error> {
+        assert_eq!(offset, 0);
+        self.sector = 0;
+        self.offset = 0;
+        Ok(())
+    }
 }
 
 pub trait Read {
@@ -717,6 +724,8 @@ impl<'a> Filesystem<'a> {
 
         let mut current_dir = *from;
         loop {
+            current_dir.seek(0)?;
+
             // sub is the directory or file name
             // residual is what is left
             let sub = match &residual[1..]
