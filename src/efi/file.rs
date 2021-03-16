@@ -182,7 +182,7 @@ pub extern "win64" fn set_position(_: *mut FileProtocol, _: u64) -> Status {
     Status::UNSUPPORTED
 }
 
-#[allow(unused)]
+#[repr(C)]
 struct FileInfo {
     size: u64,
     file_size: u64,
