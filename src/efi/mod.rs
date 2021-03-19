@@ -565,15 +565,16 @@ pub extern "win64" fn load_image(
     image_handle: *mut Handle,
 ) -> Status {
     use crate::fat::Read;
+
+    let device_path = unsafe { &*device_path };
     let mut path = [0_u8; 256];
-    let path = match get_file_path(unsafe { &*device_path }, &mut path) {
-        Err(e) => return e,
-        Ok(()) => crate::common::ascii_strip(&path),
-    };
+    extract_path(device_path, &mut path);
+    let path = crate::common::ascii_strip(&path);
+
     let loaded_image = parent_image_handle as *const LoadedImageWrapper;
-    let wrapped_fs =
-        unsafe { &*((*loaded_image).proto.device_handle as *const file::FileSystemWrapper) };
-    let mut file = match wrapped_fs.fs.open(path) {
+    let wrapped_fs_ptr: *const file::FileSystemWrapper =
+        unsafe { (*loaded_image).proto.device_handle } as *const _;
+    let mut file = match unsafe { (*wrapped_fs_ptr).fs.open(path) } {
         Ok(file) => file,
         Err(crate::fat::Error::NotFound) => return Status::NOT_FOUND,
         Err(_) => return Status::DEVICE_ERROR,
@@ -600,7 +601,7 @@ pub extern "win64" fn load_image(
     let image = new_image_handle(
         path,
         parent_image_handle,
-        wrapped_fs as *const _ as Handle,
+        wrapped_fs_ptr as Handle,
         load_addr,
         load_size,
         entry_addr,
@@ -798,17 +799,16 @@ extern "win64" fn image_unload(_: Handle) -> Status {
     efi::Status::UNSUPPORTED
 }
 
-fn get_file_path(device_path: &DevicePathProtocol, file_path: &mut [u8]) -> Result<(), Status> {
+fn extract_path(device_path: &DevicePathProtocol, path: &mut [u8]) {
     let mut dp = device_path;
     loop {
         if dp.r#type == r_efi::protocols::device_path::TYPE_MEDIA && dp.sub_type == 0x04 {
-            let path = (dp as *const _ as u64 + core::mem::size_of::<DevicePathProtocol>() as u64)
-                as *const u16;
-            crate::common::ucs2_to_ascii(path, file_path);
-            return Ok(());
+            let ptr = (dp as *const _ as u64 + core::mem::size_of::<DevicePathProtocol>() as u64) as *const u16;
+            crate::common::ucs2_to_ascii(ptr, path);
+            return;
         }
         if dp.r#type == r_efi::protocols::device_path::TYPE_END && dp.sub_type == 0xff {
-            return Err(Status::NOT_FOUND);
+            panic!("Failed to extract path");
         }
         let len = unsafe { core::mem::transmute::<[u8; 2], u16>(dp.length) };
         dp = unsafe { &*((dp as *const _ as u64 + len as u64) as *const _) };
