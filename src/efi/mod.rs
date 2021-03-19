@@ -12,7 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use core::{alloc as heap_alloc, ffi::c_void, mem::transmute};
+use core::{
+    alloc as heap_alloc,
+    ffi::c_void,
+    mem::{
+        transmute, size_of,
+    },
+};
 
 use atomic_refcell::AtomicRefCell;
 use linked_list_allocator::LockedHeap;
@@ -72,7 +78,7 @@ static mut RS: efi::RuntimeServices = efi::RuntimeServices {
     hdr: efi::TableHeader {
         signature: efi::RUNTIME_SERVICES_SIGNATURE,
         revision: efi::RUNTIME_SERVICES_REVISION,
-        header_size: core::mem::size_of::<efi::RuntimeServices>() as u32,
+        header_size: size_of::<efi::RuntimeServices>() as u32,
         crc32: 0, // TODO
         reserved: 0,
     },
@@ -96,7 +102,7 @@ static mut BS: efi::BootServices = efi::BootServices {
     hdr: efi::TableHeader {
         signature: efi::BOOT_SERVICES_SIGNATURE,
         revision: efi::BOOT_SERVICES_REVISION,
-        header_size: core::mem::size_of::<efi::BootServices>() as u32,
+        header_size: size_of::<efi::BootServices>() as u32,
         crc32: 0, // TODO
         reserved: 0,
     },
@@ -150,7 +156,7 @@ static mut ST: efi::SystemTable = efi::SystemTable {
     hdr: efi::TableHeader {
         signature: efi::SYSTEM_TABLE_SIGNATURE,
         revision: (2 << 16) | (80),
-        header_size: core::mem::size_of::<efi::SystemTable>() as u32,
+        header_size: size_of::<efi::SystemTable>() as u32,
         crc32: 0, // TODO
         reserved: 0,
     },
@@ -365,7 +371,7 @@ pub extern "win64" fn get_memory_map(
     descriptor_version: *mut u32,
 ) -> Status {
     let count = ALLOCATOR.borrow().get_descriptor_count();
-    let map_size = core::mem::size_of::<MemoryDescriptor>() * count;
+    let map_size = size_of::<MemoryDescriptor>() * count;
     if unsafe { *memory_map_size } < map_size {
         unsafe {
             *memory_map_size = map_size;
@@ -376,11 +382,11 @@ pub extern "win64" fn get_memory_map(
     let out =
         unsafe { core::slice::from_raw_parts_mut(out as *mut alloc::MemoryDescriptor, count) };
     let count = ALLOCATOR.borrow().get_descriptors(out);
-    let map_size = core::mem::size_of::<MemoryDescriptor>() * count;
+    let map_size = size_of::<MemoryDescriptor>() * count;
     unsafe {
         *memory_map_size = map_size;
         *descriptor_version = efi::MEMORY_DESCRIPTOR_VERSION;
-        *descriptor_size = core::mem::size_of::<MemoryDescriptor>();
+        *descriptor_size = size_of::<MemoryDescriptor>();
         *key = ALLOCATOR.borrow().get_map_key();
     }
 
@@ -513,13 +519,13 @@ pub extern "win64" fn locate_handle(
 ) -> Status {
     if unsafe { *guid } == block::PROTOCOL_GUID {
         let count = unsafe { BLOCK_WRAPPERS.count };
-        if unsafe { *size } < core::mem::size_of::<Handle>() * count {
-            unsafe { *size = core::mem::size_of::<Handle>() * count };
+        if unsafe { *size } < size_of::<Handle>() * count {
+            unsafe { *size = size_of::<Handle>() * count };
             return Status::BUFFER_TOO_SMALL;
         }
 
         let handles = unsafe {
-            core::slice::from_raw_parts_mut(handles, *size / core::mem::size_of::<Handle>())
+            core::slice::from_raw_parts_mut(handles, *size / size_of::<Handle>())
         };
 
         let wrappers_as_handles: &[Handle] = unsafe {
@@ -532,7 +538,7 @@ pub extern "win64" fn locate_handle(
 
         handles[0..count].copy_from_slice(wrappers_as_handles);
 
-        unsafe { *size = core::mem::size_of::<Handle>() * count };
+        unsafe { *size = size_of::<Handle>() * count };
 
         return Status::SUCCESS;
     }
@@ -803,7 +809,7 @@ fn extract_path(device_path: &DevicePathProtocol, path: &mut [u8]) {
     let mut dp = device_path;
     loop {
         if dp.r#type == r_efi::protocols::device_path::TYPE_MEDIA && dp.sub_type == 0x04 {
-            let ptr = (dp as *const _ as u64 + core::mem::size_of::<DevicePathProtocol>() as u64) as *const u16;
+            let ptr = (dp as *const _ as u64 + size_of::<DevicePathProtocol>() as u64) as *const u16;
             crate::common::ucs2_to_ascii(ptr, path);
             return;
         }
@@ -889,7 +895,7 @@ fn new_image_handle(
     let mut file_paths = core::ptr::null_mut();
     let status = allocate_pool(
         MemoryType::LoaderData,
-        core::mem::size_of::<DevicePaths>(),
+        size_of::<DevicePaths>(),
         &mut file_paths as *mut *mut c_void,
     );
     assert!(status == Status::SUCCESS);
@@ -918,7 +924,7 @@ fn new_image_handle(
     let mut image = core::ptr::null_mut();
     allocate_pool(
         MemoryType::LoaderData,
-        core::mem::size_of::<LoadedImageWrapper>(),
+        size_of::<LoadedImageWrapper>(),
         &mut image as *mut *mut c_void,
         );
     assert!(status == Status::SUCCESS);
