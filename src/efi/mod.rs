@@ -580,6 +580,7 @@ pub extern "win64" fn load_image(
     };
 
     let image_size = align_up_u64(file.get_size() as u64, PAGE_SIZE);
+
     let (status, load_addr) = ALLOCATOR.borrow_mut().allocate_pages(
         AllocateType::AllocateAnyPages,
         MemoryType::LoaderCode,
@@ -589,40 +590,26 @@ pub extern "win64" fn load_image(
     if status != Status::SUCCESS {
         return status;
     }
+
     let mut l = crate::pe::Loader::new(&mut file);
     let (entry_addr, load_addr, load_size) = match l.load(load_addr) {
         Ok(load_info) => load_info,
         Err(_) => return Status::DEVICE_ERROR,
     };
 
-    let image_handle_size =
-        align_up_u64(core::mem::size_of::<LoadedImageWrapper>() as u64, PAGE_SIZE);
-    let (status, image_handle_addr) = ALLOCATOR.borrow_mut().allocate_pages(
-        AllocateType::AllocateAnyPages,
-        MemoryType::LoaderCode,
-        image_handle_size / PAGE_SIZE,
-        0,
-    );
-    if status != Status::SUCCESS {
-        return status;
-    }
-
-    let (status, file_paths_addr) = ALLOCATOR.borrow_mut().allocate_pages(
-        AllocateType::AllocateAnyPages,
-        MemoryType::LoaderCode,
-        core::mem::size_of::<[file::FileDevicePathProtocol; 2]>() as u64 / PAGE_SIZE,
-        0,
-    );
-    if status != Status::SUCCESS {
-        return status;
-    }
-
-    let file_paths = unsafe { &mut *(file_paths_addr as *mut [file::FileDevicePathProtocol; 2]) };
+    let mut file_paths = core::ptr::null_mut();
+    let status = allocate_pool(
+        MemoryType::LoaderData,
+        core::mem::size_of::<DevicePaths>(),
+        &mut file_paths as *mut *mut c_void,
+        );
+    assert!(status == Status::SUCCESS);
+    let file_paths = unsafe { &mut *(file_paths as *mut DevicePaths) };
     *file_paths = [
         file::FileDevicePathProtocol {
             device_path: DevicePathProtocol {
                 r#type: r_efi::protocols::device_path::TYPE_MEDIA,
-                sub_type: 4,
+                sub_type: 4, // Media Path type file
                 length: [132, 0],
             },
             filename: [0; 64],
@@ -630,8 +617,8 @@ pub extern "win64" fn load_image(
         file::FileDevicePathProtocol {
             device_path: DevicePathProtocol {
                 r#type: r_efi::protocols::device_path::TYPE_END,
-                sub_type: 0xff,
-                length: [132, 0],
+                sub_type: 0xff, // End of full path
+                length: [4, 0],
             },
             filename: [0; 64],
         },
@@ -639,28 +626,37 @@ pub extern "win64" fn load_image(
 
     crate::common::ascii_to_ucs2(path, &mut file_paths[0].filename);
 
-    let image = unsafe { &mut *(image_handle_addr as *mut LoadedImageWrapper) };
-    image.hw = HandleWrapper {
-        handle_type: HandleType::LoadedImage,
+    let mut image = core::ptr::null_mut();
+    allocate_pool(
+        MemoryType::LoaderData,
+        core::mem::size_of::<DevicePaths>(),
+        &mut image as *mut *mut c_void,
+        );
+    assert!(status == Status::SUCCESS);
+    let image = unsafe { &mut *(image as *mut LoadedImageWrapper) };
+    *image = LoadedImageWrapper {
+        hw: HandleWrapper {
+            handle_type: HandleType::LoadedImage,
+        },
+        proto: LoadedImageProtocol {
+            revision: r_efi::protocols::loaded_image::REVISION,
+            parent_handle: parent_image_handle,
+            system_table: unsafe { &mut ST },
+            device_handle: wrapped_fs as *const _ as Handle,
+            file_path: &mut file_paths[0].device_path, // Pointer to first path entry
+            load_options_size: 0,
+            load_options: core::ptr::null_mut(),
+            image_base: load_addr as *mut _,
+            image_size: load_size,
+            image_code_type: efi::MemoryType::LoaderCode,
+            image_data_type: efi::MemoryType::LoaderData,
+            unload: image_unload,
+            reserved: core::ptr::null_mut(),
+        },
+        entry_point: entry_addr,
     };
-    image.proto = LoadedImageProtocol {
-        revision: r_efi::protocols::loaded_image::REVISION,
-        parent_handle: parent_image_handle,
-        system_table: unsafe { &mut ST },
-        device_handle: wrapped_fs as *const _ as Handle,
-        file_path: &mut file_paths[0].device_path,
-        load_options_size: 0,
-        load_options: core::ptr::null_mut(),
-        image_base: load_addr as *mut _,
-        image_size: load_size,
-        image_code_type: efi::MemoryType::LoaderCode,
-        image_data_type: efi::MemoryType::LoaderData,
-        unload: image_unload,
-        reserved: core::ptr::null_mut(),
-    };
-    image.entry_point = entry_addr;
 
-    unsafe { *image_handle = image as *mut _ as u64 as *mut c_void };
+    unsafe { *image_handle = image as *mut _ as *mut c_void };
 
     Status::SUCCESS
 }
@@ -930,6 +926,8 @@ struct LoadedImageWrapper {
     entry_point: u64,
 }
 
+type DevicePaths = [file::FileDevicePathProtocol; 2];
+
 pub fn efi_exec(
     address: u64,
     loaded_address: u64,
@@ -982,7 +980,15 @@ pub fn efi_exec(
 
     let efi_part_id = unsafe { block::populate_block_wrappers(&mut BLOCK_WRAPPERS, block) };
 
-    let mut file_paths = [
+    let mut file_paths = core::ptr::null_mut();
+    let status = allocate_pool(
+        MemoryType::LoaderData,
+        core::mem::size_of::<DevicePaths>(),
+        &mut file_paths as *mut *mut c_void,
+        );
+    assert!(status == Status::SUCCESS);
+    let file_paths = unsafe { &mut *(file_paths as *mut DevicePaths) };
+    *file_paths = [
         file::FileDevicePathProtocol {
             device_path: DevicePathProtocol {
                 r#type: r_efi::protocols::device_path::TYPE_MEDIA,
@@ -1005,7 +1011,15 @@ pub fn efi_exec(
 
     let wrapped_fs = file::FileSystemWrapper::new(fs, efi_part_id);
 
-    let image = LoadedImageWrapper {
+    let mut image = core::ptr::null_mut();
+    allocate_pool(
+        MemoryType::LoaderData,
+        core::mem::size_of::<DevicePaths>(),
+        &mut image as *mut *mut c_void,
+        );
+    assert!(status == Status::SUCCESS);
+    let image = unsafe { &mut *(image as *mut LoadedImageWrapper) };
+    *image = LoadedImageWrapper {
         hw: HandleWrapper {
             handle_type: HandleType::LoadedImage,
         },
@@ -1030,5 +1044,5 @@ pub fn efi_exec(
     let ptr = address as *const ();
     let code: extern "win64" fn(Handle, *mut efi::SystemTable) -> Status =
         unsafe { core::mem::transmute(ptr) };
-    (code)((&image as *const _) as Handle, &mut *st);
+    (code)((image as *const _) as Handle, &mut *st);
 }
