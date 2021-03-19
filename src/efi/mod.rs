@@ -18,6 +18,7 @@ use core::{
     mem::{
         transmute, size_of,
     },
+    ptr::null_mut,
 };
 
 use atomic_refcell::AtomicRefCell;
@@ -149,7 +150,7 @@ static mut BS: efi::BootServices = efi::BootServices {
     copy_mem,
     set_mem,
     create_event_ex,
-    reserved: core::ptr::null_mut(),
+    reserved: null_mut(),
 };
 
 static mut ST: efi::SystemTable = efi::SystemTable {
@@ -160,22 +161,22 @@ static mut ST: efi::SystemTable = efi::SystemTable {
         crc32: 0, // TODO
         reserved: 0,
     },
-    firmware_vendor: core::ptr::null_mut(), // TODO,
+    firmware_vendor: null_mut(), // TODO,
     firmware_revision: 0,
     console_in_handle: console::STDIN_HANDLE,
-    con_in: core::ptr::null_mut(),
+    con_in: null_mut(),
     console_out_handle: console::STDOUT_HANDLE,
-    con_out: core::ptr::null_mut(),
+    con_out: null_mut(),
     standard_error_handle: console::STDERR_HANDLE,
-    std_err: core::ptr::null_mut(),
-    runtime_services: core::ptr::null_mut(),
-    boot_services: core::ptr::null_mut(),
+    std_err: null_mut(),
+    runtime_services: null_mut(),
+    boot_services: null_mut(),
     number_of_table_entries: 0,
-    configuration_table: core::ptr::null_mut(),
+    configuration_table: null_mut(),
 };
 
 static mut BLOCK_WRAPPERS: block::BlockWrappers = block::BlockWrappers {
-    wrappers: [core::ptr::null_mut(); 16],
+    wrappers: [null_mut(); 16],
     count: 0,
 };
 
@@ -496,8 +497,8 @@ pub extern "win64" fn handle_protocol(
         handle,
         guid,
         out,
-        core::ptr::null_mut(),
-        core::ptr::null_mut(),
+        null_mut(),
+        null_mut(),
         0,
     )
 }
@@ -892,7 +893,7 @@ fn new_image_handle(
     load_size: u64,
     entry_addr: u64,
     ) -> *mut LoadedImageWrapper {
-    let mut file_paths = core::ptr::null_mut();
+    let mut file_paths = null_mut();
     let status = allocate_pool(
         MemoryType::LoaderData,
         size_of::<DevicePaths>(),
@@ -921,7 +922,7 @@ fn new_image_handle(
 
     crate::common::ascii_to_ucs2(path, &mut file_paths[0].filename);
 
-    let mut image = core::ptr::null_mut();
+    let mut image = null_mut();
     allocate_pool(
         MemoryType::LoaderData,
         size_of::<LoadedImageWrapper>(),
@@ -940,13 +941,13 @@ fn new_image_handle(
             device_handle: device_handle,
             file_path: &mut file_paths[0].device_path, // Pointer to first path entry
             load_options_size: 0,
-            load_options: core::ptr::null_mut(),
+            load_options: null_mut(),
             image_base: load_addr as *mut _,
             image_size: load_size,
             image_code_type: efi::MemoryType::LoaderCode,
             image_data_type: efi::MemoryType::LoaderData,
             unload: image_unload,
-            reserved: core::ptr::null_mut(),
+            reserved: null_mut(),
         },
         entry_point: entry_addr,
     };
