@@ -647,7 +647,7 @@ pub extern "win64" fn load_image(
         revision: r_efi::protocols::loaded_image::REVISION,
         parent_handle: parent_image_handle,
         system_table: unsafe { &mut ST },
-        device_handle: &wrapped_fs as *const _ as Handle,
+        device_handle: wrapped_fs as *const _ as Handle,
         file_path: &mut file_paths[0].device_path,
         load_options_size: 0,
         load_options: core::ptr::null_mut(),
