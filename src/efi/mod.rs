@@ -552,10 +552,6 @@ pub extern "win64" fn install_configuration_table(_: *mut Guid, _: *mut c_void) 
     Status::UNSUPPORTED
 }
 
-fn align_up_u64(value: u64, align: u64) -> u64 {
-    (value + align - 1) & !(align - 1)
-}
-
 pub extern "win64" fn load_image(
     _boot_policy: Boolean,
     parent_image_handle: Handle,
@@ -580,17 +576,14 @@ pub extern "win64" fn load_image(
         Err(_) => return Status::DEVICE_ERROR,
     };
 
-    let image_size = align_up_u64(file.get_size() as u64, PAGE_SIZE);
-
+    let file_size = (file.get_size() as u64 + PAGE_SIZE - 1) / PAGE_SIZE;
     let (status, load_addr) = ALLOCATOR.borrow_mut().allocate_pages(
         AllocateType::AllocateAnyPages,
         MemoryType::LoaderCode,
-        image_size / PAGE_SIZE,
+        file_size,
         0,
     );
-    if status != Status::SUCCESS {
-        return status;
-    }
+    assert!(status == Status::SUCCESS);
 
     let mut l = crate::pe::Loader::new(&mut file);
     let (entry_addr, load_addr, load_size) = match l.load(load_addr) {
