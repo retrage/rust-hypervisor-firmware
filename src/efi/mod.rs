@@ -607,7 +607,18 @@ pub extern "win64" fn load_image(
         return status;
     }
 
-    let mut file_paths = [
+    let (status, file_paths_addr) = ALLOCATOR.borrow_mut().allocate_pages(
+        AllocateType::AllocateAnyPages,
+        MemoryType::LoaderCode,
+        core::mem::size_of::<[file::FileDevicePathProtocol; 2]>() as u64 / PAGE_SIZE,
+        0,
+    );
+    if status != Status::SUCCESS {
+        return status;
+    }
+
+    let file_paths = unsafe { &mut *(file_paths_addr as *mut [file::FileDevicePathProtocol; 2]) };
+    *file_paths = [
         file::FileDevicePathProtocol {
             device_path: DevicePathProtocol {
                 r#type: r_efi::protocols::device_path::TYPE_MEDIA,
