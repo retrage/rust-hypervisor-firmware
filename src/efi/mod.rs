@@ -265,7 +265,7 @@ pub extern "win64" fn get_variable(
     vendor_guid: *mut Guid,
     attributes: *mut u32,
     data_size: *mut usize,
-    data: *mut core::ffi::c_void,
+    data: *mut c_void,
 ) -> Status {
     VARIABLES
         .borrow_mut()
