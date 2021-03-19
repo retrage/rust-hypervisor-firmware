@@ -562,39 +562,46 @@ pub extern "win64" fn load_image(
 ) -> Status {
     use crate::fat::Read;
 
-    let device_path = unsafe { &*device_path };
     let mut path = [0_u8; 256];
+    let device_path = unsafe { &*device_path };
     extract_path(device_path, &mut path);
     let path = crate::common::ascii_strip(&path);
 
-    let loaded_image = parent_image_handle as *const LoadedImageWrapper;
-    let wrapped_fs_ptr: *const file::FileSystemWrapper =
-        unsafe { (*loaded_image).proto.device_handle } as *const _;
-    let mut file = match unsafe { (*wrapped_fs_ptr).fs.open(path) } {
+    let li = parent_image_handle as *const LoadedImageWrapper;
+    let dh = unsafe { (*li).proto.device_handle };
+    let wrapped_fs_ref = unsafe { &*(dh as *const file::FileSystemWrapper) };
+    let mut file = match wrapped_fs_ref.fs.open(path) {
         Ok(file) => file,
-        Err(crate::fat::Error::NotFound) => return Status::NOT_FOUND,
         Err(_) => return Status::DEVICE_ERROR,
     };
 
     let file_size = (file.get_size() as u64 + PAGE_SIZE - 1) / PAGE_SIZE;
-    let (status, load_addr) = ALLOCATOR.borrow_mut().allocate_pages(
+    // Get free pages address
+    let load_addr = match ALLOCATOR.borrow_mut().find_free_pages(
         AllocateType::AllocateAnyPages,
-        MemoryType::LoaderCode,
         file_size,
         0,
-    );
-    assert!(status == Status::SUCCESS);
+    ) {
+        Some(a) => a,
+        None => return Status::OUT_OF_RESOURCES,
+    };
 
     let mut l = crate::pe::Loader::new(&mut file);
     let (entry_addr, load_addr, load_size) = match l.load(load_addr) {
         Ok(load_info) => load_info,
         Err(_) => return Status::DEVICE_ERROR,
     };
+    ALLOCATOR.borrow_mut().allocate_pages(
+        AllocateType::AllocateAddress,
+        MemoryType::LoaderCode,
+        file_size,
+        load_addr,
+    );
 
     let image = new_image_handle(
         path,
         parent_image_handle,
-        wrapped_fs_ptr as Handle,
+        wrapped_fs_ref as *const _ as Handle,
         load_addr,
         load_size,
         entry_addr,
