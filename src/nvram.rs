@@ -27,6 +27,7 @@ impl NvRam {
         }
     }
 
+    #[allow(dead_code)]
     fn write(&mut self, addr: u8, val: u8) {
         assert!(addr < 128);
         unsafe {
