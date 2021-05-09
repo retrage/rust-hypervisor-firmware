@@ -33,6 +33,11 @@ r-efi = "3.2.0"
 uart_16550 = "0.2.13"
 linked_list_allocator = "0.8.11"
 
+[dependencies.goblin]
+version = "0.4"
+default-features = false
+features = ["endian_fd", "elf32", "elf64"]
+
 [dev-dependencies]
 rand = "0.8.3"
 ssh2 = "0.9.1"

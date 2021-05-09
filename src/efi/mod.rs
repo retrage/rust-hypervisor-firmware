@@ -32,6 +32,7 @@ use r_efi::{
         device_path::Protocol as DevicePathProtocol, loaded_image::Protocol as LoadedImageProtocol,
     },
 };
+use goblin;
 
 use crate::boot;
 use crate::rtc;
@@ -1034,6 +1035,13 @@ fn new_image_handle(
     image
 }
 
+extern "C" {
+    #[link_name = "_binary_reloc_test_bin_start"]
+    static RELOC_TEST_BIN_START: c_void;
+    #[link_name = "_binary_reloc_test_bin_end"]
+    static RELOC_TEST_BIN_END: c_void;
+}
+
 pub fn efi_exec(
     address: u64,
     loaded_address: u64,
@@ -1042,6 +1050,27 @@ pub fn efi_exec(
     fs: &crate::fat::Filesystem,
     block: *const crate::block::VirtioBlockDevice,
 ) {
+    let bin_start = unsafe { &RELOC_TEST_BIN_START as *const _ as u64 };
+    let bin_end = unsafe { &RELOC_TEST_BIN_END as *const _ as u64 };
+    log!("test_bin: [{:#x} - {:#x}]", bin_start, bin_end);
+    let bin_size = (bin_end - bin_start) as usize;
+    let bin_data = unsafe { &RELOC_TEST_BIN_START as *const _ as *const u8 };
+    let bin_buf = unsafe { core::slice::from_raw_parts(bin_data, bin_size) };
+    match goblin::elf64::header::Header::parse(bin_buf) {
+        Ok(bin) => {
+            let entry = bin.e_entry;
+            log!("test_bin entry: {:#x}", entry);
+            log!("trying to jump in the test_bin...");
+            let ptr = entry as *const ();
+            let bin_code: fn() = unsafe { core::mem::transmute(ptr) };
+            (bin_code)();
+            log!("returned from test_bin");
+        },
+        Err(e) => {
+            log!("Failed to parse test_bin: {:?}", e);
+        }
+    }
+
     let vendor_data = 0u32;
     let acpi_rsdp_ptr = info.rsdp_addr();
 
