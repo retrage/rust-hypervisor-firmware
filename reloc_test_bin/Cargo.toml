@@ -1,0 +1,16 @@
+[package]
+name = "reloc_test_bin"
+version = "0.1.0"
+edition = "2018"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = "thin"
+
+[dependencies]
+atomic_refcell = "0.1.7"
+uart_16550 = "0.2.13"
+x86_64 = "0.14.0"
