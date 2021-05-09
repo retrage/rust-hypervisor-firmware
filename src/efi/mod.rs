@@ -1056,8 +1056,41 @@ pub fn efi_exec(
     let bin_size = (bin_end - bin_start) as usize;
     let bin_data = unsafe { &RELOC_TEST_BIN_START as *const _ as *const u8 };
     let bin_buf = unsafe { core::slice::from_raw_parts(bin_data, bin_size) };
+
+    let mut rs_addr = 0_u64;
+
     match goblin::elf64::header::Header::parse(bin_buf) {
         Ok(bin) => {
+            log!("test_bin section header info:");
+            log!("  start: {:#x}", bin_start + bin.e_shoff);
+            log!("  entry size: {:#x}", bin.e_shentsize);
+            log!("  # of entries: {:#x}", bin.e_shnum);
+            log!("  string entry index: {}", bin.e_shstrndx);
+            let sh_data = (bin_start + bin.e_shoff) as *const goblin::elf64::section_header::SectionHeader;
+            let sh = unsafe { core::slice::from_raw_parts(sh_data, bin.e_shnum as usize) };
+            let shstr = unsafe { core::slice::from_raw_parts((bin_start + sh[bin.e_shstrndx as usize].sh_offset) as *const u8, sh[bin.e_shstrndx as usize].sh_size as usize)};
+            log!("section header name string: {:?}", shstr);
+
+            for (i, e) in sh.iter().enumerate() {
+                let sh_name_start = e.sh_name as usize;
+                let mut sh_name_end = sh_name_start;
+                for c in shstr.get(sh_name_start..).unwrap().iter() {
+                    if *c == 0 {
+                        break;
+                    }
+                    sh_name_end += 1;
+                }
+                let name = shstr.get(sh_name_start..sh_name_end).unwrap();
+                let name_s = crate::common::ascii_strip(name);
+                log!("section header[{}]: {} {:?}", i, name_s, e);
+                if name_s == ".efi_rs" {
+                    rs_addr = bin_start + e.sh_offset;
+                    let mut st = unsafe { &mut ST };
+                    st.runtime_services = rs_addr as *mut efi::RuntimeServices;
+                    log!("RuntimeServices at {:#x}", rs_addr);
+                }
+            }
+
             let entry = bin.e_entry;
             log!("test_bin entry: {:#x}", entry);
             log!("trying to jump in the test_bin...");
@@ -1106,7 +1139,13 @@ pub fn efi_exec(
     st.con_in = &mut stdin;
     st.con_out = &mut stdout;
     st.std_err = &mut stdout;
-    st.runtime_services = unsafe { &mut RS };
+    /*
+    if rs_addr != 0 {
+        st.runtime_services = rs_addr as *mut efi::RuntimeServices;
+    } else {
+        st.runtime_services = unsafe { &mut RS };
+    }
+    */
     st.boot_services = unsafe { &mut BS };
     st.number_of_table_entries = 1;
     st.configuration_table = &mut ct;
