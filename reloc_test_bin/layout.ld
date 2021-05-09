@@ -19,6 +19,7 @@ SECTIONS
   .rodata : { *(.rodata .rodata.*) } :ram
   .text   : { *(.text .text.*)     }
   .data   : { *(.data .data.*)     }
+  .efi_rs : { *(.efi_rs*)          }
   .bss    : { *(.bss .bss.*)       }
 
   /* Strip symbols from the output binary (comment out to get symbols) */
