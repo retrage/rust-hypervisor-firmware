@@ -32,7 +32,10 @@ use r_efi::{
         device_path::Protocol as DevicePathProtocol, loaded_image::Protocol as LoadedImageProtocol,
     },
 };
-use goblin;
+use goblin::elf64::{
+    header::Header,
+    section_header::SectionHeader,
+};
 
 use crate::boot;
 use crate::rtc;
@@ -1059,14 +1062,14 @@ pub fn efi_exec(
 
     let mut rs_addr = 0_u64;
 
-    match goblin::elf64::header::Header::parse(bin_buf) {
+    match Header::parse(bin_buf) {
         Ok(bin) => {
             log!("test_bin section header info:");
             log!("  start: {:#x}", bin_start + bin.e_shoff);
             log!("  entry size: {:#x}", bin.e_shentsize);
             log!("  # of entries: {:#x}", bin.e_shnum);
             log!("  string entry index: {}", bin.e_shstrndx);
-            let sh_data = (bin_start + bin.e_shoff) as *const goblin::elf64::section_header::SectionHeader;
+            let sh_data = (bin_start + bin.e_shoff) as *const SectionHeader;
             let sh = unsafe { core::slice::from_raw_parts(sh_data, bin.e_shnum as usize) };
             let shstr = unsafe { core::slice::from_raw_parts((bin_start + sh[bin.e_shstrndx as usize].sh_offset) as *const u8, sh[bin.e_shstrndx as usize].sh_size as usize)};
             log!("section header name string: {:?}", shstr);
