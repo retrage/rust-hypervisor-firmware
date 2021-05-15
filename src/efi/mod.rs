@@ -913,6 +913,8 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
     let text_start = unsafe { &TEXT_START as *const _ as u64 };
     let text_end = unsafe { &TEXT_END as *const _ as u64 };
     let stack_start = unsafe { &STACK_START as *const _ as u64 };
+    let reloc_bin_start = unsafe { &RELOC_TEST_BIN_START as *const _ as u64 };
+    let reloc_bin_end = unsafe { &RELOC_TEST_BIN_END as *const _ as u64 };
     assert!(ram_min % PAGE_SIZE == 0);
     assert!(text_start % PAGE_SIZE == 0);
     assert!(text_end % PAGE_SIZE == 0);
@@ -936,6 +938,12 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
         MemoryType::RuntimeServicesData,
         (stack_start - text_end) / PAGE_SIZE,
         text_end,
+    );
+    ALLOCATOR.borrow_mut().allocate_pages(
+        AllocateType::AllocateAddress,
+        MemoryType::RuntimeServicesData,
+        (reloc_bin_end - reloc_bin_start) / PAGE_SIZE,
+        reloc_bin_start,
     );
 
     // Add the loaded binary
@@ -1174,7 +1182,7 @@ pub fn efi_exec(
     fs: &crate::fat::Filesystem,
     block: *const crate::block::VirtioBlockDevice,
 ) {
-    let rs_addr = 0_u64;
+    let mut rs_addr = 0_u64;
     let bin_start = unsafe { &RELOC_TEST_BIN_START as *const _ as *const u8 };
     let bin_size = unsafe { &RELOC_TEST_BIN_END as *const _ as u64 - &RELOC_TEST_BIN_START as *const _ as u64 } as usize;
     log!("ELF base addr: {:#x}", bin_start as u64);
@@ -1199,6 +1207,10 @@ pub fn efi_exec(
         (bin_code)();
         log!("returned from test_bin");
     }
+    if rs_offset != 0 {
+        rs_addr = bin_start as u64 + rs_offset;
+    }
+    log!("rs_addr: {:#x}", rs_addr);
 
     let vendor_data = 0u32;
     let acpi_rsdp_ptr = info.rsdp_addr();
@@ -1235,11 +1247,11 @@ pub fn efi_exec(
     st.con_in = &mut stdin;
     st.con_out = &mut stdout;
     st.std_err = &mut stdout;
-    if rs_addr != 0 {
-        st.runtime_services = rs_addr as *mut efi::RuntimeServices;
+    st.runtime_services = if rs_addr != 0 {
+        rs_addr as *mut efi::RuntimeServices
     } else {
-        st.runtime_services = unsafe { &mut RS };
-    }
+        unsafe { &mut RS }
+    };
     st.boot_services = unsafe { &mut BS };
     st.number_of_table_entries = 1;
     st.configuration_table = &mut ct;
@@ -1259,6 +1271,7 @@ pub fn efi_exec(
         address,
     );
 
+    log!("Jumping in");
     let ptr = address as *const ();
     let code: extern "win64" fn(Handle, *mut efi::SystemTable) -> Status =
         unsafe { core::mem::transmute(ptr) };
