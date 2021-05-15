@@ -32,9 +32,16 @@ use r_efi::{
         device_path::Protocol as DevicePathProtocol, loaded_image::Protocol as LoadedImageProtocol,
     },
 };
-use goblin::elf64::{
-    header::Header,
-    section_header::SectionHeader,
+use goblin::{
+    error::Error as ElfError,
+    elf64::{
+        self as elf,
+        dynamic::Dyn,
+        header::Header,
+        program_header::ProgramHeader,
+        section_header::SectionHeader,
+        reloc,
+    },
 };
 
 use crate::boot;
@@ -1045,6 +1052,120 @@ extern "C" {
     static RELOC_TEST_BIN_END: c_void;
 }
 
+fn parse_program_header(start: *const u8, size: usize) {
+    let bin = unsafe { core::slice::from_raw_parts(start, size) };
+    let header = match Header::parse(bin) {
+        Ok(header) => header,
+        Err(e) => {
+            log!("Failed to parse ELF header: {:?}", e);
+            return;
+        },
+    };
+
+    if header.e_phentsize as usize != size_of::<ProgramHeader>() {
+        log!("ELF program header size mismatch");
+        return;
+    }
+    let program_headers = unsafe { core::slice::from_raw_parts((start as u64 + header.e_phoff) as *const ProgramHeader, header.e_phnum as usize) };
+    for (i, ph) in program_headers.iter().enumerate() {
+        log!("Program Header [{}]: {:?}", i, ph);
+        if ph.p_type == elf::program_header::PT_DYNAMIC {
+            let dynamic = unsafe { core::slice::from_raw_parts((start as u64 + ph.p_offset) as *const Dyn, (ph.p_filesz as usize) / size_of::<Dyn>()) };
+            //log!("{:?}", dynamic);
+            let mut rela = 0_u64;
+            let mut relaent = 0_u64;
+            let mut relasz = 0_u64;
+            let mut relacount = 0_u64;
+            for dyna in dynamic.iter() {
+                match dyna.d_tag {
+                    elf::dynamic::DT_RELA => { rela = dyna.d_val; },
+                    elf::dynamic::DT_RELASZ => { relasz = dyna.d_val; },
+                    elf::dynamic::DT_RELAENT => { relaent = dyna.d_val; },
+                    elf::dynamic::DT_RELACOUNT => { relacount = dyna.d_val; },
+                    _ => (),
+                }
+            }
+            log!("rela: {:#x}, relaent: {}, relasz: {}, relacount: {}",
+                 rela, relaent, relasz, relacount);
+            if (relaent as usize) != size_of::<reloc::Rela>() {
+                log!("relaent mismatch");
+            }
+            if relasz != relaent * relacount {
+                log!("relasz mismatch");
+            }
+            let relas = unsafe { core::slice::from_raw_parts((start as u64 + rela) as *const reloc::Rela, relacount as usize) };
+            //log!("relas: {:?}", relas);
+            let base_addr = start as u64;
+            for rel in relas.iter() {
+                let addr = (base_addr + rel.r_offset) as *mut u64;
+                let r_type = (rel.r_info & 0xffffffff) as u32;
+                match r_type {
+                    reloc::R_X86_64_RELATIVE => {
+                        unsafe { *addr += (base_addr as i64 + rel.r_addend) as u64; }
+                    },
+                    _ => {
+                        log!("unknown reloc type: {}", r_type);
+                    },
+                }
+            }
+        }
+    }
+}
+
+fn find_section(start: *const u8, size: usize, name: &str) -> Option<u64> {
+    let bin = unsafe { core::slice::from_raw_parts(start, size) };
+    let header = match Header::parse(bin) {
+        Ok(header) => header,
+        Err(e) => {
+            log!("Failed to parse ELF header: {:?}", e);
+            return None;
+        },
+    };
+
+    if header.e_shentsize as usize != size_of::<SectionHeader>() {
+        log!("ELF section header size mismatch");
+        return None;
+    }
+    let section_headers = unsafe { core::slice::from_raw_parts((start as u64 + header.e_shoff) as *const SectionHeader, header.e_shnum as usize) };
+    let shstrndx = header.e_shstrndx as usize;
+    let shstr_addr = start as u64 + section_headers[shstrndx].sh_offset;
+    let shstr_size = section_headers[shstrndx].sh_size;
+
+    for sh in section_headers.iter() {
+        if u64::from(sh.sh_name) >= shstr_size {
+            log!("Invalid section header name index: {}", sh.sh_name);
+            continue;
+        }
+        let sh_name_addr = shstr_addr + sh.sh_name as u64;
+        let sh_name = unsafe { crate::common::from_cstring(sh_name_addr) };
+        if crate::common::ascii_strip(sh_name) == name {
+            return Some(sh.sh_offset);
+        }
+    }
+
+    log!("section '{}' not found", name);
+    None
+}
+
+fn load_elf(start: *const u8, size: usize) -> Result<u64, ElfError> {
+    let bin = unsafe { core::slice::from_raw_parts(start, size) };
+    let header = Header::parse(bin)?;
+    if header.e_machine != elf::header::EM_X86_64 {
+        log!("Unsupported ELF architecture: {:#x}", header.e_machine);
+        return Err(ElfError::BadMagic(header.e_machine as u64));
+    }
+    match header.e_type {
+        elf::header::ET_EXEC => return Ok(header.e_entry),
+        elf::header::ET_DYN => (),
+        _ => {
+            log!("Unsupported ELF executable: {}", header.e_type);
+            return Err(ElfError::BadMagic(header.e_type as u64));
+        },
+    };
+
+    Ok(start as u64 + header.e_entry)
+}
+
 pub fn efi_exec(
     address: u64,
     loaded_address: u64,
@@ -1053,58 +1174,30 @@ pub fn efi_exec(
     fs: &crate::fat::Filesystem,
     block: *const crate::block::VirtioBlockDevice,
 ) {
-    let bin_start = unsafe { &RELOC_TEST_BIN_START as *const _ as u64 };
-    let bin_end = unsafe { &RELOC_TEST_BIN_END as *const _ as u64 };
-    log!("test_bin: [{:#x} - {:#x}]", bin_start, bin_end);
-    let bin_size = (bin_end - bin_start) as usize;
-    let bin_data = unsafe { &RELOC_TEST_BIN_START as *const _ as *const u8 };
-    let bin_buf = unsafe { core::slice::from_raw_parts(bin_data, bin_size) };
-
-    let mut rs_addr = 0_u64;
-
-    match Header::parse(bin_buf) {
-        Ok(bin) => {
-            log!("test_bin section header info:");
-            log!("  start: {:#x}", bin_start + bin.e_shoff);
-            log!("  entry size: {:#x}", bin.e_shentsize);
-            log!("  # of entries: {:#x}", bin.e_shnum);
-            log!("  string entry index: {}", bin.e_shstrndx);
-            let sh_data = (bin_start + bin.e_shoff) as *const SectionHeader;
-            let sh = unsafe { core::slice::from_raw_parts(sh_data, bin.e_shnum as usize) };
-            let shstr = unsafe { core::slice::from_raw_parts((bin_start + sh[bin.e_shstrndx as usize].sh_offset) as *const u8, sh[bin.e_shstrndx as usize].sh_size as usize)};
-            log!("section header name string: {:?}", shstr);
-
-            for (i, e) in sh.iter().enumerate() {
-                let sh_name_start = e.sh_name as usize;
-                let mut sh_name_end = sh_name_start;
-                for c in shstr.get(sh_name_start..).unwrap().iter() {
-                    if *c == 0 {
-                        break;
-                    }
-                    sh_name_end += 1;
-                }
-                let name = shstr.get(sh_name_start..sh_name_end).unwrap();
-                let name_s = crate::common::ascii_strip(name);
-                log!("section header[{}]: {} {:?}", i, name_s, e);
-                if name_s == ".efi_rs" {
-                    rs_addr = bin_start + e.sh_offset;
-                    let mut st = unsafe { &mut ST };
-                    st.runtime_services = rs_addr as *mut efi::RuntimeServices;
-                    log!("RuntimeServices at {:#x}", rs_addr);
-                }
-            }
-
-            let entry = bin.e_entry;
-            log!("test_bin entry: {:#x}", entry);
-            log!("trying to jump in the test_bin...");
-            let ptr = entry as *const ();
-            let bin_code: fn() = unsafe { core::mem::transmute(ptr) };
-            (bin_code)();
-            log!("returned from test_bin");
-        },
+    let rs_addr = 0_u64;
+    let bin_start = unsafe { &RELOC_TEST_BIN_START as *const _ as *const u8 };
+    let bin_size = unsafe { &RELOC_TEST_BIN_END as *const _ as u64 - &RELOC_TEST_BIN_START as *const _ as u64 } as usize;
+    log!("ELF base addr: {:#x}", bin_start as u64);
+    let entry = match load_elf(bin_start, bin_size) {
+        Ok(entry) => entry,
         Err(e) => {
-            log!("Failed to parse test_bin: {:?}", e);
-        }
+            log!("ELF header parse error: {:?}", e);
+            0
+        },
+    };
+    let rs_offset = match find_section(bin_start, bin_size, ".efi_rs") {
+        Some(offset) => offset,
+        None => 0,
+    };
+    log!("rs_offset: {:#x}", rs_offset);
+    parse_program_header(bin_start, bin_size);
+    if entry != 0 {
+        log!("test_bin entry: {:#x}", entry);
+        log!("trying to jump in the test_bin...");
+        let ptr = entry as *const ();
+        let bin_code: fn() = unsafe { core::mem::transmute(ptr) };
+        (bin_code)();
+        log!("returned from test_bin");
     }
 
     let vendor_data = 0u32;
@@ -1142,13 +1235,11 @@ pub fn efi_exec(
     st.con_in = &mut stdin;
     st.con_out = &mut stdout;
     st.std_err = &mut stdout;
-    /*
     if rs_addr != 0 {
         st.runtime_services = rs_addr as *mut efi::RuntimeServices;
     } else {
         st.runtime_services = unsafe { &mut RS };
     }
-    */
     st.boot_services = unsafe { &mut BS };
     st.number_of_table_entries = 1;
     st.configuration_table = &mut ct;
