@@ -58,6 +58,7 @@ name = "efi_runtime"
 version = "0.1.0"
 dependencies = [
  "atomic_refcell",
+ "goblin",
  "r-efi",
  "uart_16550",
  "x86_64",

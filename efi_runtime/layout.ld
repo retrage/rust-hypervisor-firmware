@@ -2,6 +2,7 @@ ENTRY(main)
 
 SECTIONS
 {
+  start = .;
   . += SIZEOF_HEADERS;
 
   .rodata : { *(.rodata .rodata.*) }
@@ -9,6 +10,7 @@ SECTIONS
   .data   : { *(.data .data.*)     }
   .efi_rs : { *(.efi_rs*)          }
   .bss    : { *(.bss .bss.*)       }
+  end = .;
 
   /* Strip symbols from the output binary (comment out to get symbols) */
   /*

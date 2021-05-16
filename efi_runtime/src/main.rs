@@ -19,7 +19,9 @@ use r_efi::{
     },
 };
 
+mod common;
 mod delay;
+mod elf;
 mod rtc;
 #[macro_use]
 mod serial;
@@ -99,12 +101,45 @@ pub extern "win64" fn set_wakeup_time(_: Boolean, _: *mut Time) -> Status {
     Status::UNSUPPORTED
 }
 
+extern "C" {
+    #[link_name = "start"]
+    static START: core::ffi::c_void;
+    #[link_name = "end"]
+    static END: core::ffi::c_void;
+}
+
 pub extern "win64" fn set_virtual_address_map(
-    _: usize,
-    _: usize,
-    _: u32, 
-    _: *mut MemoryDescriptor,
+    map_size: usize,
+    descriptor_size: usize,
+    version: u32, 
+    descriptors: *mut MemoryDescriptor,
 ) -> Status {
+    let count = map_size / descriptor_size;
+
+    if version != efi::MEMORY_DESCRIPTOR_VERSION {
+        return Status::INVALID_PARAMETER;
+    }
+
+    let descriptors = unsafe {
+        core::slice::from_raw_parts_mut(descriptors, count)
+    };
+
+    let start = unsafe { &START as *const _ as u64 };
+    let end = unsafe { &END as *const _ as u64 };
+    let mut bytes = [0_u8; goblin::elf64::header::SIZEOF_EHDR];
+    let bin = unsafe { core::slice::from_raw_parts(start as *const u8, goblin::elf64::header::SIZEOF_EHDR) };
+    bytes.clone_from_slice(bin);
+    let header = goblin::elf64::header::Header::from_bytes(&bytes);
+
+    for descriptor in descriptors.iter() {
+        if descriptor.r#type == MemoryType::RuntimeServicesCode as u32 && descriptor.physical_start == start {
+            match elf::relocate(header, descriptor.physical_start, descriptor.virtual_start) {
+                Ok(_) => (),
+                Err(_) => log!("relocation failed"),
+            };
+        }
+    }
+
     Status::UNSUPPORTED
 }
 
