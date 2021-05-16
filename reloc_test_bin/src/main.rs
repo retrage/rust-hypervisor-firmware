@@ -33,6 +33,7 @@ fn panic(info: &PanicInfo) -> ! {
 }
 
 #[used]
+#[no_mangle]
 #[link_section = ".efi_rs.data"]
 static RS: efi::RuntimeServices = efi::RuntimeServices {
     hdr: efi::TableHeader {

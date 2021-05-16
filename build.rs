@@ -16,10 +16,12 @@ fn main() {
                          .status()
                          .unwrap();
 
+    /*
     Command::new("strip").arg("reloc_test_bin")
                          .current_dir(out_dir.as_path())
                          .status()
                          .unwrap();
+                         */
     Command::new("objcopy").args(&["-Ibinary", "-Bi386", "-Oelf64-x86-64"])
                            .args(&["--rename-section", ".data=.bin.reloc.data,alloc,load,data,contents"])
                            .arg("reloc_test_bin")

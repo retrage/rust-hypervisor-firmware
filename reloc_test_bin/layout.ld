@@ -1,4 +1,4 @@
-ENTRY(main) /* coreboot uses the ELF entrypoint */
+ENTRY(RS) /* coreboot uses the ELF entrypoint */
 
 SECTIONS
 {
