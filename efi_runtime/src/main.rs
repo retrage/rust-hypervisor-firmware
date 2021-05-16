@@ -154,7 +154,6 @@ pub extern "win64" fn get_variable(
     _: *mut usize,
     _: *mut c_void,
 ) -> Status {
-    log!("get_variable");
     Status::NOT_FOUND
 }
 
@@ -173,7 +172,6 @@ pub extern "win64" fn set_variable(
     _: usize,
     _: *mut c_void,
 ) -> Status {
-    log!("set_variable");
     Status::DEVICE_ERROR
 }
 
