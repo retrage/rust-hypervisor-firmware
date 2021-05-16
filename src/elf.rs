@@ -6,6 +6,7 @@ use core::{
 use goblin::elf64::{
     header::*,
     program_header::*,
+    section_header::*,
     dynamic::*,
     reloc::*,
 };
@@ -36,6 +37,26 @@ pub fn get_entry(start: u64, header: &Header) -> Option<u64> {
         ET_DYN => Some(start + header.e_entry),
         _ => None,
     }
+}
+
+pub fn find_section(start: u64, header: &Header, section: &str) -> Option<u64> {
+    let sh_addr = (start + header.e_shoff) as *const SectionHeader;
+    let sh_size = header.e_shnum as usize;
+    let section_headers = unsafe { from_raw_parts(sh_addr, sh_size) };
+
+    let shstrndx = header.e_shstrndx as usize;
+    let shstr_addr = start + section_headers[shstrndx].sh_offset;
+
+    for sh in section_headers.iter() {
+        let addr = shstr_addr + sh.sh_name as u64;
+        let name = unsafe { crate::common::from_cstring(addr) };
+        if crate::common::ascii_strip(name) == section {
+            return Some(start + sh.sh_offset);
+        }
+    }
+
+    log!("section '{}' not found", section);
+    None
 }
 
 pub fn relocate(header: &Header, from: u64, to: u64) -> Result<(), ()> {

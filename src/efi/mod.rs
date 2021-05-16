@@ -1065,43 +1065,6 @@ extern "C" {
     static RELOC_TEST_BIN_END: c_void;
 }
 
-/*
-fn find_section(start: *const u8, size: usize, name: &str) -> Option<u64> {
-    let bin = unsafe { core::slice::from_raw_parts(start, size) };
-    let header = match Header::parse(bin) {
-        Ok(header) => header,
-        Err(e) => {
-            log!("Failed to parse ELF header: {:?}", e);
-            return None;
-        },
-    };
-
-    if header.e_shentsize as usize != size_of::<SectionHeader>() {
-        log!("ELF section header size mismatch");
-        return None;
-    }
-    let section_headers = unsafe { core::slice::from_raw_parts((start as u64 + header.e_shoff) as *const SectionHeader, header.e_shnum as usize) };
-    let shstrndx = header.e_shstrndx as usize;
-    let shstr_addr = start as u64 + section_headers[shstrndx].sh_offset;
-    let shstr_size = section_headers[shstrndx].sh_size;
-
-    for sh in section_headers.iter() {
-        if u64::from(sh.sh_name) >= shstr_size {
-            log!("Invalid section header name index: {}", sh.sh_name);
-            continue;
-        }
-        let sh_name_addr = shstr_addr + sh.sh_name as u64;
-        let sh_name = unsafe { crate::common::from_cstring(sh_name_addr) };
-        if crate::common::ascii_strip(sh_name) == name {
-            return Some(sh.sh_offset);
-        }
-    }
-
-    log!("section '{}' not found", name);
-    None
-}
-*/
-
 pub fn efi_exec(
     address: u64,
     loaded_address: u64,
@@ -1113,12 +1076,12 @@ pub fn efi_exec(
     let bin_start = unsafe { &RELOC_TEST_BIN_START as *const _ as u64 };
     let bin_end = unsafe { &RELOC_TEST_BIN_END as *const _ as u64};
     let header = elf::parse_header(bin_start, bin_end).unwrap();
-    let entry = elf::get_entry(bin_start, &header).unwrap();
+    let _entry = elf::get_entry(bin_start, &header).unwrap();
+    let rs_addr = elf::find_section(bin_start, &header, ".efi_rs").unwrap();
     match elf::relocate(&header, bin_start, bin_start) {
         Ok(_) => (),
         Err(_) => log!("relocation failed"),
     };
-    let rs_addr = entry;
     log!("bin_start: {:#x}", bin_start);
 
     let vendor_data = 0u32;
