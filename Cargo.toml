@@ -44,6 +44,4 @@ ssh2 = "0.9.1"
 tempfile = "3.2.0"
 
 [workspace]
-members = [
-"reloc_test_bin"
-]
+members = ["efi_runtime"]

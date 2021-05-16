@@ -42,7 +42,7 @@ SECTIONS
   /* ram32.s only maps the first 2 MiB, and that must include the stack. */
   ASSERT((. <= 2M), "Stack overflows initial identity-mapped memory region")
 
-  .reloc_bin : ALIGN(4K) { *(.bin.reloc*) }
+  .bin : ALIGN(4K) { *(.bin*) }
 
   /* Strip symbols from the output binary (comment out to get symbols) */
   /DISCARD/ : {

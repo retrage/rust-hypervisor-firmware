@@ -278,8 +278,8 @@ pub extern "win64" fn set_virtual_address_map(
         core::slice::from_raw_parts_mut(descriptors as *mut alloc::MemoryDescriptor, count)
     };
 
-    let bin_start = unsafe { &RELOC_TEST_BIN_START as *const _ as u64 };
-    let bin_end = unsafe { &RELOC_TEST_BIN_END as *const _ as u64};
+    let bin_start = unsafe { &EFI_RUNTIME_START as *const _ as u64 };
+    let bin_end = unsafe { &EFI_RUNTIME_END as *const _ as u64};
     let header = elf::parse_header(bin_start, bin_end).unwrap();
     log!("bin_start: {:#x}", bin_start);
     log!("bin_end: {:#x}", bin_end);
@@ -918,8 +918,8 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
     let text_start = unsafe { &TEXT_START as *const _ as u64 };
     let text_end = unsafe { &TEXT_END as *const _ as u64 };
     let stack_start = unsafe { &STACK_START as *const _ as u64 };
-    let reloc_bin_start = unsafe { &RELOC_TEST_BIN_START as *const _ as u64 };
-    let reloc_bin_end = unsafe { &RELOC_TEST_BIN_END as *const _ as u64 };
+    let reloc_bin_start = unsafe { &EFI_RUNTIME_START as *const _ as u64 };
+    let reloc_bin_end = unsafe { &EFI_RUNTIME_END as *const _ as u64 };
     assert!(ram_min % PAGE_SIZE == 0);
     assert!(text_start % PAGE_SIZE == 0);
     assert!(text_end % PAGE_SIZE == 0);
@@ -1059,10 +1059,10 @@ fn new_image_handle(
 }
 
 extern "C" {
-    #[link_name = "_binary_reloc_test_bin_start"]
-    static RELOC_TEST_BIN_START: c_void;
-    #[link_name = "_binary_reloc_test_bin_end"]
-    static RELOC_TEST_BIN_END: c_void;
+    #[link_name = "_binary_efi_runtime_start"]
+    static EFI_RUNTIME_START: c_void;
+    #[link_name = "_binary_efi_runtime_end"]
+    static EFI_RUNTIME_END: c_void;
 }
 
 pub fn efi_exec(
@@ -1073,8 +1073,8 @@ pub fn efi_exec(
     fs: &crate::fat::Filesystem,
     block: *const crate::block::VirtioBlockDevice,
 ) {
-    let bin_start = unsafe { &RELOC_TEST_BIN_START as *const _ as u64 };
-    let bin_end = unsafe { &RELOC_TEST_BIN_END as *const _ as u64};
+    let bin_start = unsafe { &EFI_RUNTIME_START as *const _ as u64 };
+    let bin_end = unsafe { &EFI_RUNTIME_END as *const _ as u64};
     let header = elf::parse_header(bin_start, bin_end).unwrap();
     let _entry = elf::get_entry(bin_start, &header).unwrap();
     let rs_addr = elf::find_section(bin_start, &header, ".efi_rs").unwrap();

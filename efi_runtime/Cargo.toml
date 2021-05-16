@@ -1,5 +1,5 @@
 [package]
-name = "reloc_test_bin"
+name = "efi_runtime"
 version = "0.1.0"
 edition = "2018"
 

@@ -7,12 +7,12 @@ fn main() {
     out_dir.push("target");
     out_dir.push("target");
     out_dir.push("debug");
-    //let out_dir = "/home/akira/src/hv-fw/rust-hypervisor-firmware/target/target/debug";
 
-    let mut reloc_src = current_dir.clone();
-    reloc_src.push("reloc_test_bin");
+    let bin_name = "efi_runtime";
+    let mut efi_runtime = current_dir.clone();
+    efi_runtime.push(bin_name);
     Command::new("sh").args(&["cargo", "build", "--target", "target.json", "-Zbuild-std=core", "-Zbuild-std-features=compiler-builtins-mem", "--verbose"])
-                         .current_dir(reloc_src.as_path())
+                         .current_dir(efi_runtime.as_path())
                          .status()
                          .unwrap();
 
@@ -22,25 +22,27 @@ fn main() {
                          .status()
                          .unwrap();
                          */
+    let obj_name = format!("{}.o", bin_name);
     Command::new("objcopy").args(&["-Ibinary", "-Bi386", "-Oelf64-x86-64"])
-                           .args(&["--rename-section", ".data=.bin.reloc.data,alloc,load,data,contents"])
-                           .arg("reloc_test_bin")
-                           .arg("reloc_test_bin.o")
+                           .args(&["--rename-section", ".data=.bin.data,alloc,load,data,contents"])
+                           .arg(bin_name)
+                           .arg(obj_name.as_str())
                            .current_dir(out_dir.as_path())
                            .status()
                            .unwrap();
+    let ar_name = format!("lib{}.a", bin_name);
     Command::new("ar").args(&["crus"])
-                      .arg("libreloc_test_bin.a")
-                      .arg("reloc_test_bin.o")
+                      .arg(ar_name.as_str())
+                      .arg(obj_name.as_str())
                       .current_dir(out_dir.as_path())
                       .status()
                       .unwrap();
 
     println!("cargo:rustc-link-search=native={}",
              out_dir.as_path().to_str().unwrap());
-    println!("cargo:rustc-link-lib=static=reloc_test_bin");
+    println!("cargo:rustc-link-lib=static={}", bin_name);
     println!("cargo:rerun-if-changed=target.json");
     println!("cargo:rerun-if-changed=layout.ld");
     println!("cargo:rerun-if-changed={}",
-             reloc_src.as_path().to_str().unwrap());
+             efi_runtime.as_path().to_str().unwrap());
 }

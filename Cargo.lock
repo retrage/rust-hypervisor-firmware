@@ -54,6 +54,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "efi_runtime"
+version = "0.1.0"
+dependencies = [
+ "atomic_refcell",
+ "r-efi",
+ "uart_16550",
+ "x86_64",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -282,16 +292,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94341e4e44e24f6b591b59e47a8a027df12e008d73fd5672dbea9cc22f4507d9"
 dependencies = [
  "bitflags",
-]
-
-[[package]]
-name = "reloc_test_bin"
-version = "0.1.0"
-dependencies = [
- "atomic_refcell",
- "r-efi",
- "uart_16550",
- "x86_64",
 ]
 
 [[package]]

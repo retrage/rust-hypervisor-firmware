@@ -18,6 +18,6 @@
   "code-model": "small",
   "relocation-model": "pic",
   "pre-link-args": {
-    "ld.lld": ["-pie", "--script=reloc_test_bin/layout.ld"]
+    "ld.lld": ["-pie", "--script=efi_runtime/layout.ld"]
   }
 }
