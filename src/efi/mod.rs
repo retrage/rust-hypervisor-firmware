@@ -34,7 +34,7 @@ use r_efi::{
 };
 
 use crate::boot;
-use crate::elf as elf;
+use crate::elf;
 use crate::rtc;
 
 mod alloc;
