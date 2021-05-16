@@ -32,19 +32,9 @@ use r_efi::{
         device_path::Protocol as DevicePathProtocol, loaded_image::Protocol as LoadedImageProtocol,
     },
 };
-use goblin::{
-    error::Error as ElfError,
-    elf64::{
-        self as elf,
-        dynamic::Dyn,
-        header::Header,
-        program_header::ProgramHeader,
-        section_header::SectionHeader,
-        reloc,
-    },
-};
 
 use crate::boot;
+use crate::elf as elf;
 use crate::rtc;
 
 mod alloc;
@@ -288,6 +278,21 @@ pub extern "win64" fn set_virtual_address_map(
         core::slice::from_raw_parts_mut(descriptors as *mut alloc::MemoryDescriptor, count)
     };
 
+    let bin_start = unsafe { &RELOC_TEST_BIN_START as *const _ as u64 };
+    let bin_end = unsafe { &RELOC_TEST_BIN_END as *const _ as u64};
+    let header = elf::parse_header(bin_start, bin_end).unwrap();
+    log!("bin_start: {:#x}", bin_start);
+    log!("bin_end: {:#x}", bin_end);
+    log!("header: {:?}", header);
+
+    for descriptor in descriptors.iter() {
+        if descriptor.r#type == MemoryType::RuntimeServicesCode as u32 && descriptor.physical_start == bin_start {
+            match elf::relocate(&header, descriptor.physical_start, descriptor.virtual_start) {
+                Ok(_) => (),
+                Err(_) => log!("relocation failed"),
+            };
+        }
+    }
     unsafe {
         fixup_at_virtual(descriptors);
     }
@@ -941,7 +946,7 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
     );
     ALLOCATOR.borrow_mut().allocate_pages(
         AllocateType::AllocateAddress,
-        MemoryType::RuntimeServicesData,
+        MemoryType::RuntimeServicesCode,
         (reloc_bin_end - reloc_bin_start) / PAGE_SIZE,
         reloc_bin_start,
     );
@@ -1060,66 +1065,7 @@ extern "C" {
     static RELOC_TEST_BIN_END: c_void;
 }
 
-fn parse_program_header(start: *const u8, size: usize) {
-    let bin = unsafe { core::slice::from_raw_parts(start, size) };
-    let header = match Header::parse(bin) {
-        Ok(header) => header,
-        Err(e) => {
-            log!("Failed to parse ELF header: {:?}", e);
-            return;
-        },
-    };
-
-    if header.e_phentsize as usize != size_of::<ProgramHeader>() {
-        log!("ELF program header size mismatch");
-        return;
-    }
-    let program_headers = unsafe { core::slice::from_raw_parts((start as u64 + header.e_phoff) as *const ProgramHeader, header.e_phnum as usize) };
-    for (i, ph) in program_headers.iter().enumerate() {
-        log!("Program Header [{}]: {:?}", i, ph);
-        if ph.p_type == elf::program_header::PT_DYNAMIC {
-            let dynamic = unsafe { core::slice::from_raw_parts((start as u64 + ph.p_offset) as *const Dyn, (ph.p_filesz as usize) / size_of::<Dyn>()) };
-            //log!("{:?}", dynamic);
-            let mut rela = 0_u64;
-            let mut relaent = 0_u64;
-            let mut relasz = 0_u64;
-            let mut relacount = 0_u64;
-            for dyna in dynamic.iter() {
-                match dyna.d_tag {
-                    elf::dynamic::DT_RELA => { rela = dyna.d_val; },
-                    elf::dynamic::DT_RELASZ => { relasz = dyna.d_val; },
-                    elf::dynamic::DT_RELAENT => { relaent = dyna.d_val; },
-                    elf::dynamic::DT_RELACOUNT => { relacount = dyna.d_val; },
-                    _ => (),
-                }
-            }
-            log!("rela: {:#x}, relaent: {}, relasz: {}, relacount: {}",
-                 rela, relaent, relasz, relacount);
-            if (relaent as usize) != size_of::<reloc::Rela>() {
-                log!("relaent mismatch");
-            }
-            if relasz != relaent * relacount {
-                log!("relasz mismatch");
-            }
-            let relas = unsafe { core::slice::from_raw_parts((start as u64 + rela) as *const reloc::Rela, relacount as usize) };
-            //log!("relas: {:?}", relas);
-            let base_addr = start as u64;
-            for rel in relas.iter() {
-                let addr = (base_addr + rel.r_offset) as *mut u64;
-                let r_type = (rel.r_info & 0xffffffff) as u32;
-                match r_type {
-                    reloc::R_X86_64_RELATIVE => {
-                        unsafe { *addr += (base_addr as i64 + rel.r_addend) as u64; }
-                    },
-                    _ => {
-                        log!("unknown reloc type: {}", r_type);
-                    },
-                }
-            }
-        }
-    }
-}
-
+/*
 fn find_section(start: *const u8, size: usize, name: &str) -> Option<u64> {
     let bin = unsafe { core::slice::from_raw_parts(start, size) };
     let header = match Header::parse(bin) {
@@ -1154,25 +1100,7 @@ fn find_section(start: *const u8, size: usize, name: &str) -> Option<u64> {
     log!("section '{}' not found", name);
     None
 }
-
-fn load_elf(start: *const u8, size: usize) -> Result<u64, ElfError> {
-    let bin = unsafe { core::slice::from_raw_parts(start, size) };
-    let header = Header::parse(bin)?;
-    if header.e_machine != elf::header::EM_X86_64 {
-        log!("Unsupported ELF architecture: {:#x}", header.e_machine);
-        return Err(ElfError::BadMagic(header.e_machine as u64));
-    }
-    match header.e_type {
-        elf::header::ET_EXEC => return Ok(header.e_entry),
-        elf::header::ET_DYN => (),
-        _ => {
-            log!("Unsupported ELF executable: {}", header.e_type);
-            return Err(ElfError::BadMagic(header.e_type as u64));
-        },
-    };
-
-    Ok(start as u64 + header.e_entry)
-}
+*/
 
 pub fn efi_exec(
     address: u64,
@@ -1182,35 +1110,16 @@ pub fn efi_exec(
     fs: &crate::fat::Filesystem,
     block: *const crate::block::VirtioBlockDevice,
 ) {
-    let mut rs_addr = 0_u64;
-    let bin_start = unsafe { &RELOC_TEST_BIN_START as *const _ as *const u8 };
-    let bin_size = unsafe { &RELOC_TEST_BIN_END as *const _ as u64 - &RELOC_TEST_BIN_START as *const _ as u64 } as usize;
-    log!("ELF base addr: {:#x}", bin_start as u64);
-    let entry = match load_elf(bin_start, bin_size) {
-        Ok(entry) => entry,
-        Err(e) => {
-            log!("ELF header parse error: {:?}", e);
-            0
-        },
+    let bin_start = unsafe { &RELOC_TEST_BIN_START as *const _ as u64 };
+    let bin_end = unsafe { &RELOC_TEST_BIN_END as *const _ as u64};
+    let header = elf::parse_header(bin_start, bin_end).unwrap();
+    let entry = elf::get_entry(bin_start, &header).unwrap();
+    match elf::relocate(&header, bin_start, bin_start) {
+        Ok(_) => (),
+        Err(_) => log!("relocation failed"),
     };
-    let rs_offset = match find_section(bin_start, bin_size, ".efi_rs") {
-        Some(offset) => offset,
-        None => 0,
-    };
-    log!("rs_offset: {:#x}", rs_offset);
-    parse_program_header(bin_start, bin_size);
-    if entry != 0 {
-        log!("test_bin entry: {:#x}", entry);
-        log!("trying to jump in the test_bin...");
-        let ptr = entry as *const ();
-        let bin_code: fn() = unsafe { core::mem::transmute(ptr) };
-        (bin_code)();
-        log!("returned from test_bin");
-    }
-    if rs_offset != 0 {
-        rs_addr = bin_start as u64 + rs_offset;
-    }
-    log!("rs_addr: {:#x}", rs_addr);
+    let rs_addr = entry;
+    log!("bin_start: {:#x}", bin_start);
 
     let vendor_data = 0u32;
     let acpi_rsdp_ptr = info.rsdp_addr();
@@ -1247,11 +1156,10 @@ pub fn efi_exec(
     st.con_in = &mut stdin;
     st.con_out = &mut stdout;
     st.std_err = &mut stdout;
-    st.runtime_services = if rs_addr != 0 {
-        rs_addr as *mut efi::RuntimeServices
-    } else {
-        unsafe { &mut RS }
-    };
+    st.runtime_services = rs_addr as *mut efi::RuntimeServices;
+    unsafe {
+        (*st.runtime_services).set_virtual_address_map = set_virtual_address_map;
+    }
     st.boot_services = unsafe { &mut BS };
     st.number_of_table_entries = 1;
     st.configuration_table = &mut ct;

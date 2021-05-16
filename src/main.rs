@@ -41,6 +41,7 @@ mod bzimage;
 mod coreboot;
 mod delay;
 mod efi;
+mod elf;
 mod fat;
 mod gdt;
 #[cfg(all(test, feature = "integration_tests"))]
