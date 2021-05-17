@@ -12,10 +12,8 @@ SECTIONS
   end = .;
 
   /* Strip symbols from the output binary (comment out to get symbols) */
-  /*
   /DISCARD/ : {
     *(.symtab)
     *(.strtab)
   }
-  */
 }
