@@ -8,7 +8,6 @@ SECTIONS
   .rodata : { *(.rodata .rodata.*) }
   .text   : { *(.text .text.*)     }
   .data   : { *(.data .data.*)     }
-  .efi_rs : { *(.efi_rs*)          }
   .bss    : { *(.bss .bss.*)       }
   end = .;
 

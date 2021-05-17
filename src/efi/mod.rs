@@ -75,29 +75,7 @@ fn heap_alloc_error_handler(layout: heap_alloc::Layout) -> ! {
 pub static VARIABLES: AtomicRefCell<VariableAllocator> =
     AtomicRefCell::new(VariableAllocator::new());
 
-static mut RS: efi::RuntimeServices = efi::RuntimeServices {
-    hdr: efi::TableHeader {
-        signature: efi::RUNTIME_SERVICES_SIGNATURE,
-        revision: efi::RUNTIME_SERVICES_REVISION,
-        header_size: size_of::<efi::RuntimeServices>() as u32,
-        crc32: 0, // TODO
-        reserved: 0,
-    },
-    get_time,
-    set_time,
-    get_wakeup_time,
-    set_wakeup_time,
-    set_virtual_address_map,
-    convert_pointer,
-    get_variable,
-    get_next_variable_name,
-    set_variable,
-    get_next_high_mono_count,
-    reset_system,
-    update_capsule,
-    query_capsule_capabilities,
-    query_variable_info,
-};
+static mut ST: *mut efi::SystemTable = null_mut();
 
 static mut BS: efi::BootServices = efi::BootServices {
     hdr: efi::TableHeader {
@@ -153,235 +131,10 @@ static mut BS: efi::BootServices = efi::BootServices {
     reserved: null_mut(),
 };
 
-static mut ST: efi::SystemTable = efi::SystemTable {
-    hdr: efi::TableHeader {
-        signature: efi::SYSTEM_TABLE_SIGNATURE,
-        revision: (2 << 16) | (80),
-        header_size: size_of::<efi::SystemTable>() as u32,
-        crc32: 0, // TODO
-        reserved: 0,
-    },
-    firmware_vendor: null_mut(), // TODO,
-    firmware_revision: 0,
-    console_in_handle: console::STDIN_HANDLE,
-    con_in: null_mut(),
-    console_out_handle: console::STDOUT_HANDLE,
-    con_out: null_mut(),
-    standard_error_handle: console::STDERR_HANDLE,
-    std_err: null_mut(),
-    runtime_services: null_mut(),
-    boot_services: null_mut(),
-    number_of_table_entries: 0,
-    configuration_table: null_mut(),
-};
-
 static mut BLOCK_WRAPPERS: block::BlockWrappers = block::BlockWrappers {
     wrappers: [null_mut(); 16],
     count: 0,
 };
-
-fn convert_internal_pointer(descriptors: &[alloc::MemoryDescriptor], ptr: u64) -> Option<u64> {
-    for descriptor in descriptors.iter() {
-        let start = descriptor.physical_start;
-        let end = descriptor.physical_start + descriptor.number_of_pages * PAGE_SIZE;
-        if start <= ptr && ptr < end {
-            return Some(ptr - descriptor.physical_start + descriptor.virtual_start);
-        }
-    }
-    None
-}
-
-unsafe fn fixup_at_virtual(descriptors: &[alloc::MemoryDescriptor]) {
-    let mut st = &mut ST;
-    let mut rs = &mut RS;
-
-    let ptr = convert_internal_pointer(descriptors, (not_available as *const ()) as u64).unwrap();
-    rs.get_time = transmute(ptr);
-    rs.set_time = transmute(ptr);
-    rs.get_wakeup_time = transmute(ptr);
-    rs.set_wakeup_time = transmute(ptr);
-    rs.get_variable = transmute(ptr);
-    rs.set_variable = transmute(ptr);
-    rs.get_next_variable_name = transmute(ptr);
-    rs.reset_system = transmute(ptr);
-    rs.update_capsule = transmute(ptr);
-    rs.query_capsule_capabilities = transmute(ptr);
-    rs.query_variable_info = transmute(ptr);
-
-    let ct = st.configuration_table;
-    let ptr = convert_internal_pointer(descriptors, (ct as *const _) as u64).unwrap();
-    st.configuration_table = transmute(ptr);
-
-    let rs = st.runtime_services;
-    let ptr = convert_internal_pointer(descriptors, (rs as *const _) as u64).unwrap();
-    st.runtime_services = transmute(ptr);
-}
-
-pub extern "win64" fn not_available() -> Status {
-    Status::UNSUPPORTED
-}
-
-pub extern "win64" fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Status {
-    if time.is_null() {
-        return Status::INVALID_PARAMETER;
-    }
-
-    let (year, month, day) = match rtc::read_date() {
-        Ok((y, m, d)) => (y, m, d),
-        Err(()) => return Status::DEVICE_ERROR,
-    };
-    let (hour, minute, second) = match rtc::read_time() {
-        Ok((h, m, s)) => (h, m, s),
-        Err(()) => return Status::DEVICE_ERROR,
-    };
-
-    unsafe {
-        (*time).year = 2000 + year as u16;
-        (*time).month = month;
-        (*time).day = day;
-        (*time).hour = hour;
-        (*time).minute = minute;
-        (*time).second = second;
-        (*time).nanosecond = 0;
-        (*time).timezone = 0;
-        (*time).daylight = 0;
-    }
-
-    Status::SUCCESS
-}
-
-pub extern "win64" fn set_time(_: *mut Time) -> Status {
-    Status::DEVICE_ERROR
-}
-
-pub extern "win64" fn get_wakeup_time(_: *mut Boolean, _: *mut Boolean, _: *mut Time) -> Status {
-    Status::UNSUPPORTED
-}
-
-pub extern "win64" fn set_wakeup_time(_: Boolean, _: *mut Time) -> Status {
-    Status::UNSUPPORTED
-}
-
-pub extern "win64" fn set_virtual_address_map(
-    map_size: usize,
-    descriptor_size: usize,
-    version: u32,
-    descriptors: *mut MemoryDescriptor,
-) -> Status {
-    let count = map_size / descriptor_size;
-
-    if version != efi::MEMORY_DESCRIPTOR_VERSION {
-        return Status::INVALID_PARAMETER;
-    }
-
-    let descriptors = unsafe {
-        core::slice::from_raw_parts_mut(descriptors as *mut alloc::MemoryDescriptor, count)
-    };
-
-    let bin_start = unsafe { &EFI_RUNTIME_START as *const _ as u64 };
-    let bin_end = unsafe { &EFI_RUNTIME_END as *const _ as u64};
-    let header = elf::parse_header(bin_start, bin_end).unwrap();
-    log!("bin_start: {:#x}", bin_start);
-    log!("bin_end: {:#x}", bin_end);
-    log!("header: {:?}", header);
-
-    for descriptor in descriptors.iter() {
-        if descriptor.r#type == MemoryType::RuntimeServicesCode as u32 && descriptor.physical_start == bin_start {
-            match elf::relocate(&header, descriptor.physical_start, descriptor.virtual_start) {
-                Ok(_) => (),
-                Err(_) => log!("relocation failed"),
-            };
-        }
-    }
-    unsafe {
-        fixup_at_virtual(descriptors);
-    }
-
-    ALLOCATOR.borrow_mut().update_virtual_addresses(descriptors)
-}
-
-pub extern "win64" fn convert_pointer(_: usize, _: *mut *mut c_void) -> Status {
-    Status::UNSUPPORTED
-}
-
-pub extern "win64" fn get_variable(
-    variable_name: *mut Char16,
-    vendor_guid: *mut Guid,
-    attributes: *mut u32,
-    data_size: *mut usize,
-    data: *mut c_void,
-) -> Status {
-    if cfg!(feature = "efi-var") {
-        VARIABLES
-            .borrow_mut()
-            .get(variable_name, vendor_guid, attributes, data_size, data)
-    } else {
-        Status::NOT_FOUND
-    }
-}
-
-pub extern "win64" fn get_next_variable_name(
-    _: *mut usize,
-    _: *mut Char16,
-    _: *mut Guid,
-) -> Status {
-    Status::NOT_FOUND
-}
-
-pub extern "win64" fn set_variable(
-    variable_name: *mut Char16,
-    vendor_guid: *mut Guid,
-    attributes: u32,
-    data_size: usize,
-    data: *mut c_void,
-) -> Status {
-    if cfg!(feature = "efi-var") {
-        VARIABLES
-            .borrow_mut()
-            .set(variable_name, vendor_guid, attributes, data_size, data)
-    } else {
-        Status::UNSUPPORTED
-    }
-}
-
-pub extern "win64" fn get_next_high_mono_count(_: *mut u32) -> Status {
-    Status::DEVICE_ERROR
-}
-
-pub extern "win64" fn reset_system(_: ResetType, _: Status, _: usize, _: *mut c_void) {
-    // Don't do anything to force the kernel to use ACPI for shutdown and triple-fault for reset
-}
-
-pub extern "win64" fn update_capsule(
-    _: *mut *mut CapsuleHeader,
-    _: usize,
-    _: PhysicalAddress,
-) -> Status {
-    Status::UNSUPPORTED
-}
-
-pub extern "win64" fn query_capsule_capabilities(
-    _: *mut *mut CapsuleHeader,
-    _: usize,
-    _: *mut u64,
-    _: *mut ResetType,
-) -> Status {
-    Status::UNSUPPORTED
-}
-
-pub extern "win64" fn query_variable_info(
-    _: u32,
-    max_storage: *mut u64,
-    remaining_storage: *mut u64,
-    max_size: *mut u64,
-) -> Status {
-    unsafe {
-        *max_storage = 0;
-        *remaining_storage = 0;
-        *max_size = 0;
-    }
-    Status::SUCCESS
-}
 
 pub extern "win64" fn raise_tpl(_: Tpl) -> Tpl {
     0
@@ -691,7 +444,7 @@ pub extern "win64" fn start_image(
     let ptr = address as *const ();
     let code: extern "win64" fn(Handle, *mut efi::SystemTable) -> Status =
         unsafe { core::mem::transmute(ptr) };
-    (code)(image_handle, unsafe { &mut ST })
+    (code)(image_handle, unsafe { ST })
 }
 
 pub extern "win64" fn exit(_: Handle, _: Status, _: usize, _: *mut Char16) -> Status {
@@ -1041,7 +794,7 @@ fn new_image_handle(
         proto: LoadedImageProtocol {
             revision: r_efi::protocols::loaded_image::REVISION,
             parent_handle,
-            system_table: unsafe { &mut ST },
+            system_table: unsafe { ST },
             device_handle,
             file_path: &mut file_paths[0].device_path, // Pointer to first path entry
             load_options_size: 0,
@@ -1073,16 +826,23 @@ pub fn efi_exec(
     fs: &crate::fat::Filesystem,
     block: *const crate::block::VirtioBlockDevice,
 ) {
+    populate_allocator(info, loaded_address, loaded_size);
+
     let bin_start = unsafe { &EFI_RUNTIME_START as *const _ as u64 };
     let bin_end = unsafe { &EFI_RUNTIME_END as *const _ as u64};
     let header = elf::parse_header(bin_start, bin_end).unwrap();
-    let _entry = elf::get_entry(bin_start, &header).unwrap();
-    let rs_addr = elf::find_section(bin_start, &header, ".efi_rs").unwrap();
     match elf::relocate(&header, bin_start, bin_start) {
         Ok(_) => (),
         Err(_) => log!("relocation failed"),
     };
     log!("bin_start: {:#x}", bin_start);
+
+    let entry = elf::get_entry(bin_start, &header).unwrap();
+    log!("Run efi_runtime::main() at {:#x}...", entry);
+    let ptr = entry as *const ();
+    let code: fn() -> *mut efi::SystemTable = unsafe { transmute(ptr) };
+    unsafe { ST = (code)(); }
+    log!("SystemTable: {:#x}", unsafe { ST } as u64);
 
     let vendor_data = 0u32;
     let acpi_rsdp_ptr = info.rsdp_addr();
@@ -1113,21 +873,18 @@ pub fn efi_exec(
         }
     };
 
+    let mut st = unsafe { &mut (*ST) };
     let mut stdin = console::STDIN;
     let mut stdout = console::STDOUT;
-    let mut st = unsafe { &mut ST };
     st.con_in = &mut stdin;
     st.con_out = &mut stdout;
     st.std_err = &mut stdout;
-    st.runtime_services = rs_addr as *mut efi::RuntimeServices;
-    unsafe {
-        (*st.runtime_services).set_virtual_address_map = set_virtual_address_map;
-    }
+    st.console_in_handle = console::STDIN_HANDLE;
+    st.console_out_handle = console::STDOUT_HANDLE;
+    st.standard_error_handle = console::STDERR_HANDLE;
     st.boot_services = unsafe { &mut BS };
     st.number_of_table_entries = 1;
     st.configuration_table = &mut ct;
-
-    populate_allocator(info, loaded_address, loaded_size);
 
     let efi_part_id = unsafe { block::populate_block_wrappers(&mut BLOCK_WRAPPERS, block) };
 
@@ -1146,5 +903,5 @@ pub fn efi_exec(
     let ptr = address as *const ();
     let code: extern "win64" fn(Handle, *mut efi::SystemTable) -> Status =
         unsafe { core::mem::transmute(ptr) };
-    (code)((image as *const _) as Handle, &mut *st);
+    (code)((image as *const _) as Handle, unsafe { ST });
 }

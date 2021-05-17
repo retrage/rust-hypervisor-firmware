@@ -6,6 +6,7 @@ use core::{
     ffi::c_void,
     mem::size_of,
     panic::PanicInfo,
+    ptr::null_mut,
 };
 
 use x86_64::instructions::hlt;
@@ -34,9 +35,7 @@ fn panic(info: &PanicInfo) -> ! {
     }
 }
 
-#[used]
-#[link_section = ".efi_rs.data"]
-static RS: efi::RuntimeServices = efi::RuntimeServices {
+static mut RS: efi::RuntimeServices = efi::RuntimeServices {
     hdr: efi::TableHeader {
         signature: efi::RUNTIME_SERVICES_SIGNATURE,
         revision: efi::RUNTIME_SERVICES_REVISION,
@@ -58,6 +57,28 @@ static RS: efi::RuntimeServices = efi::RuntimeServices {
     update_capsule,
     query_capsule_capabilities,
     query_variable_info,
+};
+
+static mut ST: efi::SystemTable = efi::SystemTable {
+    hdr: efi::TableHeader {
+    signature: efi::SYSTEM_TABLE_SIGNATURE,
+    revision: efi::SYSTEM_TABLE_REVISION_2_70,
+    header_size: size_of::<efi::SystemTable>() as u32,
+    crc32: 0, // TODO
+    reserved: 0,
+    },
+    firmware_vendor: null_mut(), // TODO,
+    firmware_revision: 0,
+    console_in_handle: null_mut(),
+    con_in: null_mut(),
+    console_out_handle: null_mut(),
+    con_out: null_mut(),
+    standard_error_handle: null_mut(),
+    std_err: null_mut(),
+    runtime_services: null_mut(),
+    boot_services: null_mut(),
+    number_of_table_entries: 0,
+    configuration_table: null_mut(),
 };
 
 pub extern "win64" fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Status {
@@ -215,11 +236,14 @@ pub extern "win64" fn query_variable_info(
 }
 
 #[no_mangle]
-fn main() {
+fn main() -> *mut efi::SystemTable {
     serial::PORT.borrow_mut().init();
 
-    log!("Hello, world from outer section!");
+    unsafe {
+        ST.runtime_services = &mut RS as *mut _;
+    }
 
-    let rs = &RS as *const _ as u64;
-    log!("RuntimeServices is at {:#x}", rs);
+    unsafe {
+        &mut ST as *mut _
+    }
 }
