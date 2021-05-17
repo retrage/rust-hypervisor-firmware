@@ -35,16 +35,16 @@ use r_efi::{
 
 use crate::boot;
 use crate::elf;
-use crate::rtc;
+//use crate::rtc;
 
 mod alloc;
 mod block;
 mod console;
 mod file;
-mod var;
+//mod var;
 
 use alloc::Allocator;
-use var::VariableAllocator;
+//use var::VariableAllocator;
 
 #[derive(Copy, Clone, PartialEq)]
 enum HandleType {
@@ -72,8 +72,10 @@ fn heap_alloc_error_handler(layout: heap_alloc::Layout) -> ! {
     panic!("heap allocation error: {:?}", layout);
 }
 
+/*
 pub static VARIABLES: AtomicRefCell<VariableAllocator> =
     AtomicRefCell::new(VariableAllocator::new());
+    */
 
 static mut ST: *mut efi::SystemTable = null_mut();
 
