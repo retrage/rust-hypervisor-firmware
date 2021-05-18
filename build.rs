@@ -11,7 +11,7 @@ fn main() {
     let bin_name = "efi_runtime";
     let mut efi_runtime = current_dir.clone();
     efi_runtime.push(bin_name);
-    Command::new("sh").args(&["cargo", "build", "--target", "target.json", "-Zbuild-std=core", "-Zbuild-std-features=compiler-builtins-mem", "--verbose"])
+    Command::new("sh").args(&["cargo", "build", "--target", "target.json", "-Zbuild-std=core,alloc", "-Zbuild-std-features=compiler-builtins-mem", "--verbose"])
                          .current_dir(efi_runtime.as_path())
                          .status()
                          .unwrap();

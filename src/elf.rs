@@ -11,11 +11,13 @@ use goblin::elf64::{
     reloc::*,
 };
 
+/*
 pub fn parse_header(start: u64, end: u64) -> Option<Header> {
     let size = (end - start) as usize;
     let bin = unsafe { from_raw_parts(start as *const u8, size) };
     Header::parse(bin).ok()
 }
+*/
 
 fn validate_header(header: &Header) -> bool {
     if header.e_machine != EM_X86_64 {
@@ -47,6 +49,15 @@ pub fn find_section(start: u64, header: &Header, section: &str) -> Option<u64> {
     let shstrndx = header.e_shstrndx as usize;
     let shstr_addr = start + section_headers[shstrndx].sh_offset;
 
+    for (i, sh) in section_headers.iter().enumerate() {
+        let addr = shstr_addr + sh.sh_name as u64;
+        let name = unsafe { crate::common::from_cstring(addr) };
+        let name = crate::common::ascii_strip(name);
+        if sh.sh_type == SHT_NOBITS {
+            log!("section[{}]: '{}' {:?}", i, name, sh);
+        }
+    }
+
     for sh in section_headers.iter() {
         let addr = shstr_addr + sh.sh_name as u64;
         let name = unsafe { crate::common::from_cstring(addr) };
@@ -72,7 +83,7 @@ pub fn relocate(header: &Header, from: u64, to: u64) -> Result<(), ()> {
         let dyns = unsafe { from_raw_parts(dyn_addr, dyn_size) };
         let rela = dyns.into_iter().find(|&d| d.d_tag == DT_RELA).ok_or(())?;
         let relasz = dyns.into_iter().find(|&d| d.d_tag == DT_RELASZ).ok_or(())?;
-        log!("rela: {:?}, relasz: {:?}", rela, relasz);
+        //log!("rela: {:?}, relasz: {:?}", rela, relasz);
         let rela_addr = (from + rela.d_val) as *const Rela;
         let rela_size = (relasz.d_val as usize) / size_of::<Rela>();
         let relas = unsafe { from_raw_parts(rela_addr, rela_size) };

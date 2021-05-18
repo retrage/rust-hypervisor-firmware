@@ -1,8 +1,10 @@
 #![feature(asm)]
+#![feature(alloc_error_handler)]
 #![no_std]
 #![no_main]
 
 use core::{
+    alloc,
     ffi::c_void,
     mem::size_of,
     panic::PanicInfo,
@@ -10,6 +12,7 @@ use core::{
 };
 
 use x86_64::instructions::hlt;
+use linked_list_allocator::LockedHeap;
 #[allow(unused_imports)]
 use r_efi::{
     efi::{
@@ -34,6 +37,14 @@ fn panic(info: &PanicInfo) -> ! {
         hlt()
     }
 }
+
+#[alloc_error_handler]
+fn heap_alloc_error_handler(layout: alloc::Layout) -> ! {
+    panic!("heap allocation error: {:?}", layout);
+}
+
+#[global_allocator]
+static HEAP_ALLOCATOR: LockedHeap = LockedHeap::empty();
 
 static mut RS: efi::RuntimeServices = efi::RuntimeServices {
     hdr: efi::TableHeader {
@@ -235,9 +246,20 @@ pub extern "win64" fn query_variable_info(
     Status::SUCCESS
 }
 
+fn init_heap_allocator(start: usize, size: usize) {
+    unsafe {
+        HEAP_ALLOCATOR.lock().init(start, size);
+    }
+}
+
 #[no_mangle]
-fn main() -> *mut efi::SystemTable {
+fn main(heap_start: usize, heap_size: usize) -> *mut efi::SystemTable {
     serial::PORT.borrow_mut().init();
+
+    log!("heap_start: {:#x} HEAP_SIZE: {:#x}", heap_start, heap_size);
+    log!("Initiailizing HEAP_ALLOCATOR...");
+    init_heap_allocator(heap_start, heap_size);
+    log!("Done");
 
     unsafe {
         ST.runtime_services = &mut RS as *mut _;

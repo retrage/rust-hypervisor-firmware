@@ -13,14 +13,14 @@
 // limitations under the License.
 
 use core::{
-    alloc as heap_alloc,
+//    alloc as heap_alloc,
     ffi::c_void,
     mem::{size_of, transmute},
     ptr::null_mut,
 };
 
 use atomic_refcell::AtomicRefCell;
-use linked_list_allocator::LockedHeap;
+//use linked_list_allocator::LockedHeap;
 use r_efi::{
     efi::{
         self, AllocateType, Boolean, CapsuleHeader, Char16, Event, EventNotify, Guid, Handle,
@@ -62,6 +62,7 @@ struct HandleWrapper {
 
 pub static ALLOCATOR: AtomicRefCell<Allocator> = AtomicRefCell::new(Allocator::new());
 
+/*
 #[cfg(not(test))]
 #[global_allocator]
 pub static HEAP_ALLOCATOR: LockedHeap = LockedHeap::empty();
@@ -71,6 +72,7 @@ pub static HEAP_ALLOCATOR: LockedHeap = LockedHeap::empty();
 fn heap_alloc_error_handler(layout: heap_alloc::Layout) -> ! {
     panic!("heap allocation error: {:?}", layout);
 }
+*/
 
 /*
 pub static VARIABLES: AtomicRefCell<VariableAllocator> =
@@ -713,27 +715,7 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
         image_size / PAGE_SIZE,
         image_address,
     );
-
-    // Initialize heap allocator
-    init_heap_allocator(HEAP_SIZE);
 }
-
-#[cfg(not(test))]
-fn init_heap_allocator(size: usize) {
-    let (status, heap_start) = ALLOCATOR.borrow_mut().allocate_pages(
-        AllocateType::AllocateAnyPages,
-        MemoryType::BootServicesCode,
-        size as u64 / PAGE_SIZE,
-        0,
-    );
-    assert!(status == Status::SUCCESS);
-    unsafe {
-        HEAP_ALLOCATOR.lock().init(heap_start as usize, size);
-    }
-}
-
-#[cfg(test)]
-fn init_heap_allocator(_: usize) {}
 
 #[repr(C)]
 struct LoadedImageWrapper {
@@ -828,22 +810,37 @@ pub fn efi_exec(
     fs: &crate::fat::Filesystem,
     block: *const crate::block::VirtioBlockDevice,
 ) {
+    let mut bytes = [0_u8; goblin::elf64::header::SIZEOF_EHDR];
+
     populate_allocator(info, loaded_address, loaded_size);
 
     let bin_start = unsafe { &EFI_RUNTIME_START as *const _ as u64 };
-    let bin_end = unsafe { &EFI_RUNTIME_END as *const _ as u64};
-    let header = elf::parse_header(bin_start, bin_end).unwrap();
-    match elf::relocate(&header, bin_start, bin_start) {
+    let _bin_end = unsafe { &EFI_RUNTIME_END as *const _ as u64};
+    let bin = unsafe { core::slice::from_raw_parts(&EFI_RUNTIME_START as *const _ as *const u8, goblin::elf64::header::SIZEOF_EHDR) };
+    bytes.clone_from_slice(bin);
+    let header = goblin::elf64::header::Header::from_bytes(&bytes);
+    match elf::relocate(header, bin_start, bin_start) {
         Ok(_) => (),
         Err(_) => log!("relocation failed"),
     };
     log!("bin_start: {:#x}", bin_start);
+    let _ = elf::find_section(bin_start, header, ".data");
 
-    let entry = elf::get_entry(bin_start, &header).unwrap();
+    // Initialize heap allocator
+    let (status, heap_start) = ALLOCATOR.borrow_mut().allocate_pages(
+        AllocateType::AllocateAnyPages,
+        MemoryType::RuntimeServicesData,
+        HEAP_SIZE as u64 / PAGE_SIZE,
+        0,
+    );
+    assert!(status == Status::SUCCESS);
+    log!("heap_start: {:#x} HEAP_SIZE: {:#x}", heap_start, HEAP_SIZE);
+
+    let entry = elf::get_entry(bin_start, header).unwrap();
     log!("Run efi_runtime::main() at {:#x}...", entry);
     let ptr = entry as *const ();
-    let code: fn() -> *mut efi::SystemTable = unsafe { transmute(ptr) };
-    unsafe { ST = (code)(); }
+    let code: fn(usize, usize) -> *mut efi::SystemTable = unsafe { transmute(ptr) };
+    unsafe { ST = (code)(heap_start as usize, HEAP_SIZE); }
     log!("SystemTable: {:#x}", unsafe { ST } as u64);
 
     let vendor_data = 0u32;
