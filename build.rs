@@ -17,11 +17,11 @@ fn main() {
                          .unwrap();
 
     /*
-    Command::new("strip").arg("reloc_test_bin")
+    Command::new("strip").arg(bin_name)
                          .current_dir(out_dir.as_path())
                          .status()
                          .unwrap();
-                         */
+    */
     let obj_name = format!("{}.o", bin_name);
     Command::new("objcopy").args(&["-Ibinary", "-Bi386", "-Oelf64-x86-64"])
                            .args(&["--rename-section", ".data=.bin.data,alloc,load,data,contents"])
