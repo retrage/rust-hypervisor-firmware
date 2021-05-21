@@ -41,7 +41,7 @@ pub fn get_entry(start: u64, header: &Header) -> Option<u64> {
     }
 }
 
-pub fn find_section(start: u64, header: &Header, section: &str) -> Option<u64> {
+pub fn find_section(start: u64, header: &Header, section: &str) -> Option<(u64, u64)> {
     let sh_addr = (start + header.e_shoff) as *const SectionHeader;
     let sh_size = header.e_shnum as usize;
     let section_headers = unsafe { from_raw_parts(sh_addr, sh_size) };
@@ -49,20 +49,20 @@ pub fn find_section(start: u64, header: &Header, section: &str) -> Option<u64> {
     let shstrndx = header.e_shstrndx as usize;
     let shstr_addr = start + section_headers[shstrndx].sh_offset;
 
+    /*
     for (i, sh) in section_headers.iter().enumerate() {
         let addr = shstr_addr + sh.sh_name as u64;
         let name = unsafe { crate::common::from_cstring(addr) };
         let name = crate::common::ascii_strip(name);
-        if sh.sh_type == SHT_NOBITS {
-            log!("section[{}]: '{}' {:?}", i, name, sh);
-        }
+        log!("section[{}]: '{}' {:?}", i, name, sh);
     }
+    */
 
     for sh in section_headers.iter() {
         let addr = shstr_addr + sh.sh_name as u64;
         let name = unsafe { crate::common::from_cstring(addr) };
         if crate::common::ascii_strip(name) == section {
-            return Some(start + sh.sh_offset);
+            return Some((start + sh.sh_offset, sh.sh_size));
         }
     }
 
