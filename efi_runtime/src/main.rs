@@ -146,6 +146,7 @@ pub extern "win64" fn set_virtual_address_map(
     version: u32, 
     descriptors: *mut MemoryDescriptor,
 ) -> Status {
+    log!("set_virtual_address_map");
     let count = map_size / descriptor_size;
 
     if version != efi::MEMORY_DESCRIPTOR_VERSION {
@@ -172,7 +173,8 @@ pub extern "win64" fn set_virtual_address_map(
         }
     }
 
-    Status::UNSUPPORTED
+    log!("set_virtual_address_map done");
+    Status::SUCCESS
 }
 
 pub extern "win64" fn convert_pointer(_: usize, _: *mut *mut c_void) -> Status {
