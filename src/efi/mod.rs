@@ -655,7 +655,7 @@ extern "C" {
 }
 
 const PAGE_SIZE: u64 = 4096;
-const HEAP_SIZE: usize = 256 * 1024 * 1024;
+const HEAP_SIZE: usize = 2 * 1024 * 1024;
 
 // Populate allocator from E820, fixed ranges for the firmware and the loaded binary.
 fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64) {
