@@ -819,6 +819,13 @@ pub fn efi_exec(
     let bin = unsafe { core::slice::from_raw_parts(&EFI_RUNTIME_START as *const _ as *const u8, goblin::elf64::header::SIZEOF_EHDR) };
     bytes.clone_from_slice(bin);
     let header = goblin::elf64::header::Header::from_bytes(&bytes);
+    /*
+    let (bss_start, bss_size) = elf::find_section(bin_start, header, ".bss").unwrap();
+    let bss_ptr = bss_start as *mut u8;
+    unsafe {
+        core::ptr::write_bytes(bss_ptr, 0x00, bss_size as usize);
+    }
+    */
     match elf::relocate(header, bin_start, bin_start) {
         Ok(_) => (),
         Err(_) => log!("relocation failed"),
