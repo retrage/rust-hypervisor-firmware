@@ -11,6 +11,7 @@ use core::{
     ptr::null_mut,
 };
 
+use atomic_refcell::AtomicRefCell;
 use x86_64::instructions::hlt;
 use linked_list_allocator::LockedHeap;
 #[allow(unused_imports)]
@@ -29,6 +30,9 @@ mod elf;
 mod rtc;
 #[macro_use]
 mod serial;
+mod var;
+
+use var::VariableAllocator;
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -45,6 +49,8 @@ fn heap_alloc_error_handler(layout: alloc::Layout) -> ! {
 
 #[global_allocator]
 static HEAP_ALLOCATOR: LockedHeap = LockedHeap::empty();
+
+static VARIABLES: AtomicRefCell<VariableAllocator> = AtomicRefCell::new(VariableAllocator::new());
 
 static mut RS: efi::RuntimeServices = efi::RuntimeServices {
     hdr: efi::TableHeader {
@@ -182,13 +188,15 @@ pub extern "win64" fn convert_pointer(_: usize, _: *mut *mut c_void) -> Status {
 }
 
 pub extern "win64" fn get_variable(
-    _: *mut Char16,
-    _: *mut Guid,
-    _: *mut u32,
-    _: *mut usize,
-    _: *mut c_void,
+    variable_name: *mut Char16,
+    vendor_guid: *mut Guid,
+    attributes: *mut u32,
+    data_size: *mut usize,
+    data: *mut c_void,
 ) -> Status {
-    Status::NOT_FOUND
+    VARIABLES
+        .borrow_mut()
+        .get(variable_name, vendor_guid, attributes, data_size, data)
 }
 
 pub extern "win64" fn get_next_variable_name(
@@ -200,13 +208,15 @@ pub extern "win64" fn get_next_variable_name(
 }
 
 pub extern "win64" fn set_variable(
-    _: *mut Char16,
-    _: *mut Guid,
-    _: u32,
-    _: usize,
-    _: *mut c_void,
+    variable_name: *mut Char16,
+    vendor_guid: *mut Guid,
+    attributes: u32,
+    data_size: usize,
+    data: *mut c_void,
 ) -> Status {
-    Status::DEVICE_ERROR
+    VARIABLES
+        .borrow_mut()
+        .set(variable_name, vendor_guid, attributes, data_size, data)
 }
 
 pub extern "win64" fn get_next_high_mono_count(_: *mut u32) -> Status {
