@@ -657,6 +657,10 @@ extern "C" {
 const PAGE_SIZE: u64 = 4096;
 const HEAP_SIZE: usize = 2 * 1024 * 1024;
 
+fn align_up(val: u64, align: u64) -> u64 {
+    (val + align - 1) & !(align - 1)
+}
+
 // Populate allocator from E820, fixed ranges for the firmware and the loaded binary.
 fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64) {
     for i in 0..info.num_entries() {
@@ -682,29 +686,32 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
     assert!(text_end % PAGE_SIZE == 0);
     assert!(stack_start % PAGE_SIZE == 0);
 
+    log!("reloc_bin_start: {:#x}", reloc_bin_start);
+    log!("reloc_bin_end: {:#x}", reloc_bin_end);
+
     // Add ourselves
     ALLOCATOR.borrow_mut().allocate_pages(
         AllocateType::AllocateAddress,
-        MemoryType::RuntimeServicesData,
-        (text_start - ram_min) / PAGE_SIZE,
+        MemoryType::BootServicesData,
+        align_up(text_start - ram_min, PAGE_SIZE) / PAGE_SIZE,
         ram_min,
     );
     ALLOCATOR.borrow_mut().allocate_pages(
         AllocateType::AllocateAddress,
-        MemoryType::RuntimeServicesCode,
-        (text_end - text_start) / PAGE_SIZE,
+        MemoryType::BootServicesCode,
+        align_up(text_end - text_start, PAGE_SIZE) / PAGE_SIZE,
         text_start,
     );
     ALLOCATOR.borrow_mut().allocate_pages(
         AllocateType::AllocateAddress,
-        MemoryType::RuntimeServicesData,
-        (stack_start - text_end) / PAGE_SIZE,
+        MemoryType::BootServicesData,
+        align_up(stack_start - text_end, PAGE_SIZE) / PAGE_SIZE,
         text_end,
     );
     ALLOCATOR.borrow_mut().allocate_pages(
         AllocateType::AllocateAddress,
         MemoryType::RuntimeServicesCode,
-        (reloc_bin_end - reloc_bin_start) / PAGE_SIZE,
+        align_up(reloc_bin_end - reloc_bin_start, PAGE_SIZE) / PAGE_SIZE,
         reloc_bin_start,
     );
 
