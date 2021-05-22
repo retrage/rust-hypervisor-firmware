@@ -646,20 +646,16 @@ fn extract_path(device_path: &DevicePathProtocol, path: &mut [u8]) {
 extern "C" {
     #[link_name = "ram_min"]
     static RAM_MIN: c_void;
-    #[link_name = "text_start"]
-    static TEXT_START: c_void;
-    #[link_name = "text_end"]
-    static TEXT_END: c_void;
-    #[link_name = "stack_start"]
-    static STACK_START: c_void;
+    #[link_name = "data_end"]
+    static DATA_END: c_void;
+    #[link_name = "bin_start"]
+    static BIN_START: c_void;
+    #[link_name = "bin_end"]
+    static BIN_END: c_void;
 }
 
 const PAGE_SIZE: u64 = 4096;
 const HEAP_SIZE: usize = 2 * 1024 * 1024;
-
-fn align_up(val: u64, align: u64) -> u64 {
-    (val + align - 1) & !(align - 1)
-}
 
 // Populate allocator from E820, fixed ranges for the firmware and the loaded binary.
 fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64) {
@@ -675,44 +671,24 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
         }
     }
 
-    let ram_min = unsafe { &RAM_MIN as *const _ as u64 };
-    let text_start = unsafe { &TEXT_START as *const _ as u64 };
-    let text_end = unsafe { &TEXT_END as *const _ as u64 };
-    let stack_start = unsafe { &STACK_START as *const _ as u64 };
-    let reloc_bin_start = unsafe { &EFI_RUNTIME_START as *const _ as u64 };
-    let reloc_bin_end = unsafe { &EFI_RUNTIME_END as *const _ as u64 };
-    assert!(ram_min % PAGE_SIZE == 0);
-    assert!(text_start % PAGE_SIZE == 0);
-    assert!(text_end % PAGE_SIZE == 0);
-    assert!(stack_start % PAGE_SIZE == 0);
-
-    log!("reloc_bin_start: {:#x}", reloc_bin_start);
-    log!("reloc_bin_end: {:#x}", reloc_bin_end);
-
     // Add ourselves
-    ALLOCATOR.borrow_mut().allocate_pages(
-        AllocateType::AllocateAddress,
-        MemoryType::BootServicesData,
-        align_up(text_start - ram_min, PAGE_SIZE) / PAGE_SIZE,
-        ram_min,
-    );
+    let ram_min = unsafe { &RAM_MIN as *const _ as u64 };
+    let data_end = unsafe { &DATA_END as *const _ as u64 };
     ALLOCATOR.borrow_mut().allocate_pages(
         AllocateType::AllocateAddress,
         MemoryType::BootServicesCode,
-        align_up(text_end - text_start, PAGE_SIZE) / PAGE_SIZE,
-        text_start,
+        (data_end - ram_min) / PAGE_SIZE,
+        ram_min,
     );
-    ALLOCATOR.borrow_mut().allocate_pages(
-        AllocateType::AllocateAddress,
-        MemoryType::BootServicesData,
-        align_up(stack_start - text_end, PAGE_SIZE) / PAGE_SIZE,
-        text_end,
-    );
+
+    // Add embedded EFI runtime binary
+    let bin_start = unsafe { &BIN_START as *const _ as u64 };
+    let bin_end = unsafe { &BIN_END as *const _ as u64 };
     ALLOCATOR.borrow_mut().allocate_pages(
         AllocateType::AllocateAddress,
         MemoryType::RuntimeServicesCode,
-        align_up(reloc_bin_end - reloc_bin_start, PAGE_SIZE) / PAGE_SIZE,
-        reloc_bin_start,
+        (bin_end - bin_start) / PAGE_SIZE,
+        bin_start,
     );
 
     // Add the loaded binary
@@ -802,13 +778,6 @@ fn new_image_handle(
     image
 }
 
-extern "C" {
-    #[link_name = "bin_start"]
-    static EFI_RUNTIME_START: c_void;
-    #[link_name = "bin_end"]
-    static EFI_RUNTIME_END: c_void;
-}
-
 pub fn efi_exec(
     address: u64,
     loaded_address: u64,
@@ -821,9 +790,8 @@ pub fn efi_exec(
 
     populate_allocator(info, loaded_address, loaded_size);
 
-    let bin_start = unsafe { &EFI_RUNTIME_START as *const _ as u64 };
-    let _bin_end = unsafe { &EFI_RUNTIME_END as *const _ as u64};
-    let bin = unsafe { core::slice::from_raw_parts(&EFI_RUNTIME_START as *const _ as *const u8, goblin::elf64::header::SIZEOF_EHDR) };
+    let bin_start = unsafe { &BIN_START as *const _ as u64 };
+    let bin = unsafe { core::slice::from_raw_parts(&BIN_START as *const _ as *const u8, goblin::elf64::header::SIZEOF_EHDR) };
     bytes.clone_from_slice(bin);
     let header = goblin::elf64::header::Header::from_bytes(&bytes);
     /*
