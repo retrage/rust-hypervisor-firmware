@@ -803,9 +803,9 @@ fn new_image_handle(
 }
 
 extern "C" {
-    #[link_name = "_binary_efi_runtime_start"]
+    #[link_name = "bin_start"]
     static EFI_RUNTIME_START: c_void;
-    #[link_name = "_binary_efi_runtime_end"]
+    #[link_name = "bin_end"]
     static EFI_RUNTIME_END: c_void;
 }
 
