@@ -93,7 +93,6 @@ dependencies = [
  "atomic_refcell",
  "bitflags",
  "goblin",
- "linked_list_allocator",
  "r-efi",
  "rand",
  "ssh2",
