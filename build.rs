@@ -1,46 +1,85 @@
 use std::process::Command;
 use std::env;
+use std::path::{Path, PathBuf};
+
+fn build_lib(src_path: &Path) {
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
+    let manifest_path = src_path.join("Cargo.toml");
+
+    let mut build_cmd = Command::new(env!("CARGO"));
+    build_cmd.current_dir(src_path);
+    build_cmd.arg("build");
+    build_cmd
+        .arg("--manifest-path")
+        .arg(&manifest_path);
+    build_cmd
+        .arg("--target")
+        .arg("target.json");
+    build_cmd
+        .arg("-Zbuild-std=core,alloc");
+    build_cmd
+        .arg("-Zbuild-std-features=compiler-builtins-mem");
+    build_cmd
+        .arg("-Zunstable-options");
+    build_cmd
+        .arg("--out-dir")
+        .arg(&out_dir);
+    build_cmd
+        .arg("--verbose");
+
+    if !build_cmd.status().unwrap().success() {
+        panic!("build failed");
+    }
+
+    let elf_name = src_path
+        .file_name().expect("Invalid ELF file name")
+        .to_str().expect("Failed to convert to str");
+    let elf_path = PathBuf::from(&out_dir).join(elf_name);
+
+    assert!(elf_path.exists(), "{} does not exist", elf_path.display());
+
+    let obj_name = format!("{}.o", elf_name);
+    let obj_path = PathBuf::from(&out_dir).join(obj_name);
+
+    let mut objcopy = Command::new("objcopy");
+    objcopy
+        .arg("-Ibinary")
+        .arg("-Bi386")
+        .arg("-Oelf64-x86-64");
+    objcopy
+        .arg("--rename-section")
+        .arg(".data=.bin.data,alloc,load,data,contents");
+    objcopy
+        .arg(elf_path)
+        .arg(&obj_path);
+
+    if !objcopy.status().unwrap().success() {
+        panic!("objcopy failed");
+    }
+
+    let lib_name = format!("lib{}.a", elf_name);
+    let lib_path = PathBuf::from(&out_dir).join(lib_name);
+    let mut ar = Command::new("ar");
+    ar
+        .arg("crus")
+        .arg(lib_path)
+        .arg(obj_path);
+
+    if !ar.status().unwrap().success() {
+        panic!("ar failed");
+    }
+
+    println!("cargo:rustc-link-search=native={}", out_dir.as_path().display());
+    println!("cargo:rustc-link-lib=static={}", &elf_name);
+    println!("cargo:rerun-if-changed={}", src_path.display());
+}
 
 fn main() {
-    let current_dir = env::current_dir().unwrap();
-    let mut out_dir = current_dir.clone();
-    out_dir.push("target");
-    out_dir.push("target");
-    out_dir.push("debug");
+    let mut cur_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
+    cur_dir.push("efi_runtime");
 
-    let bin_name = "efi_runtime";
-    let mut efi_runtime = current_dir.clone();
-    efi_runtime.push(bin_name);
-    Command::new("sh").args(&["cargo", "build", "--target", "target.json", "-Zbuild-std=core,alloc", "-Zbuild-std-features=compiler-builtins-mem", "--verbose"])
-                         .current_dir(efi_runtime.as_path())
-                         .status()
-                         .unwrap();
+    build_lib(cur_dir.as_path());
 
-    Command::new("strip").arg(bin_name)
-                         .current_dir(out_dir.as_path())
-                         .status()
-                         .unwrap();
-    let obj_name = format!("{}.o", bin_name);
-    Command::new("objcopy").args(&["-Ibinary", "-Bi386", "-Oelf64-x86-64"])
-                           .args(&["--rename-section", ".data=.bin.data,alloc,load,data,contents"])
-                           .arg(bin_name)
-                           .arg(obj_name.as_str())
-                           .current_dir(out_dir.as_path())
-                           .status()
-                           .unwrap();
-    let ar_name = format!("lib{}.a", bin_name);
-    Command::new("ar").args(&["crus"])
-                      .arg(ar_name.as_str())
-                      .arg(obj_name.as_str())
-                      .current_dir(out_dir.as_path())
-                      .status()
-                      .unwrap();
-
-    println!("cargo:rustc-link-search=native={}",
-             out_dir.as_path().to_str().unwrap());
-    println!("cargo:rustc-link-lib=static={}", bin_name);
     println!("cargo:rerun-if-changed=target.json");
     println!("cargo:rerun-if-changed=layout.ld");
-    println!("cargo:rerun-if-changed={}",
-             efi_runtime.as_path().to_str().unwrap());
 }
