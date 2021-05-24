@@ -27,10 +27,10 @@ efi-var = []
 
 [dependencies]
 bitflags = "1.2.1"
-x86_64 = "0.14.0"
+x86_64 = "0.14.3"
 atomic_refcell = "0.1.7"
 r-efi = "3.2.0"
-uart_16550 = "0.2.13"
+uart_16550 = "0.2.14"
 
 [dependencies.goblin]
 version = "0.4"
@@ -43,4 +43,4 @@ ssh2 = "0.9.1"
 tempfile = "3.2.0"
 
 [workspace]
-members = ["efi_runtime"]
+exclude = ["efi_runtime"]
