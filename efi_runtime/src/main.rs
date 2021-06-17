@@ -153,7 +153,7 @@ pub extern "win64" fn set_virtual_address_map(
     };
 
     let start = unsafe { &START as *const _ as u64 };
-    let end = unsafe { &END as *const _ as u64 };
+    let _end = unsafe { &END as *const _ as u64 };
     let mut bytes = [0_u8; goblin::elf64::header::SIZEOF_EHDR];
     let bin = unsafe { core::slice::from_raw_parts(start as *const u8, goblin::elf64::header::SIZEOF_EHDR) };
     bytes.clone_from_slice(bin);

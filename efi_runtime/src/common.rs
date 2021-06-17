@@ -38,6 +38,7 @@ macro_rules! container_of_mut {
 
 // SAFETY: Requires that addr point to a static, null-terminated C-string.
 // The returned slice does not include the null-terminator.
+#[allow(dead_code)]
 pub unsafe fn from_cstring(addr: u64) -> &'static [u8] {
     if addr == 0 {
         return &[];
@@ -50,6 +51,7 @@ pub unsafe fn from_cstring(addr: u64) -> &'static [u8] {
     core::slice::from_raw_parts(start, size)
 }
 
+#[allow(dead_code)]
 pub fn ascii_strip(s: &[u8]) -> &str {
     core::str::from_utf8(s).unwrap().trim_matches(char::from(0))
 }
@@ -67,6 +69,7 @@ pub fn ucs2_as_ascii_length(input: *const u16) -> usize {
     len
 }
 
+#[allow(dead_code)]
 pub fn ascii_length(input: &str) -> usize {
     let mut len = 0;
     for c in input.chars() {
@@ -78,6 +81,7 @@ pub fn ascii_length(input: &str) -> usize {
     len
 }
 
+#[allow(dead_code)]
 pub fn ucs2_to_ascii(input: *const u16, output: &mut [u8]) {
     let mut i: usize = 0;
     assert!(output.len() >= ucs2_as_ascii_length(input));
@@ -92,6 +96,7 @@ pub fn ucs2_to_ascii(input: *const u16, output: &mut [u8]) {
     }
 }
 
+#[allow(dead_code)]
 pub fn ascii_to_ucs2(input: &str, output: &mut [u16]) {
     assert!(output.len() >= input.len() * 2);
 

@@ -11,6 +11,7 @@ use goblin::elf64::{
     reloc::*,
 };
 
+#[allow(dead_code)]
 fn validate_header(header: &Header) -> bool {
     if header.e_machine != EM_X86_64 {
         return false;
@@ -21,6 +22,7 @@ fn validate_header(header: &Header) -> bool {
     }
 }
 
+#[allow(dead_code)]
 pub fn get_entry(start: u64, header: &Header) -> Option<u64> {
     if !validate_header(header) {
         return None;
@@ -33,6 +35,7 @@ pub fn get_entry(start: u64, header: &Header) -> Option<u64> {
     }
 }
 
+#[allow(dead_code)]
 pub fn find_section(start: u64, header: &Header, section: &str) -> Option<u64> {
     let sh_addr = (start + header.e_shoff) as *const SectionHeader;
     let sh_size = header.e_shnum as usize;
