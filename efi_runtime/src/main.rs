@@ -179,6 +179,11 @@ pub extern "win64" fn set_virtual_address_map(
         }
     }
 
+    match VARIABLES.borrow_mut().update_address(descriptors) {
+        Ok(_) => (),
+        Err(_) => log!("Failed to update variable address"),
+    };
+
     log!("set_virtual_address_map done");
     Status::SUCCESS
 }
