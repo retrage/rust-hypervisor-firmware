@@ -1,59 +1,179 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2021 Akira Moroo
 
-#[cfg(not(test))]
-extern crate alloc;
-
-#[cfg(not(test))]
-use alloc::vec::Vec;
-
+use core::{
+    mem::{align_of, size_of},
+    slice::{from_raw_parts, from_raw_parts_mut},
+};
 use r_efi::efi;
 
-#[derive(Debug)]
+use crate::common;
+
+#[derive(PartialEq, Debug, Copy, Clone)]
+struct Data {
+    offset: usize,
+    size: usize,
+}
+
+impl Data {
+    const fn new() -> Self {
+        Self {
+            offset: 0,
+            size: 0,
+        }
+    }
+}
+
+#[derive(PartialEq, Debug, Copy, Clone)]
 struct Descriptor {
-    name: Vec<u16>,
+    name: Data,
     guid: efi::Guid,
     attr: u32,
-    data: Vec<u8>,
+    data: Data,
 }
 
 impl Descriptor {
     const fn new() -> Self {
         Self {
-            name: Vec::new(),
+            name: Data::new(),
             guid: efi::Guid::from_fields(0, 0, 0, 0, 0, &[0; 6]),
             attr: 0,
-            data: Vec::new(),
+            data: Data::new(),
         }
+    }
+    fn is_empty(&self) -> bool {
+        *self == Descriptor::new()
     }
 }
 
+fn align_up(addr: usize, align: usize) -> usize {
+    (addr + align - 1) & !(align - 1)
+}
+
+const VAR_COUNT_MAX: usize = 64;
+
 pub struct VariableAllocator {
-    allocations: Vec<Descriptor>,
+    vars: [Descriptor; VAR_COUNT_MAX],
+    addr: usize,
+    size: usize,
+    next: usize, // next allocation offset
 }
 
 impl VariableAllocator {
     pub const fn new() -> Self {
         Self {
-            allocations: Vec::new(),
+            vars: [Descriptor::new(); VAR_COUNT_MAX],
+            addr: 0,
+            size: 0,
+            next: 0,
         }
+    }
+
+    pub fn init(&mut self, addr: usize, size: usize) {
+        self.addr = addr;
+        self.size = size;
+    }
+
+    fn get_name(&self, desc: &Descriptor) -> &[u16] {
+        let name = unsafe { from_raw_parts(
+                (self.addr as u64 + desc.name.offset as u64) as *const u16,
+                desc.name.size / size_of::<u16>()) };
+        return name;
+    }
+
+    fn get_data(&self, desc: &Descriptor) -> &[u8] {
+        let data = unsafe { from_raw_parts(
+                (self.addr as u64 + desc.data.offset as u64) as *const u8,
+                desc.data.size / size_of::<u8>()) };
+        return data;
+    }
+
+    fn set_desc(&mut self, desc: &Descriptor) -> Option<usize> {
+        for (i, v) in self.vars.iter_mut().enumerate() {
+            if v.is_empty() {
+                *v = *desc;
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    fn set_name(&mut self, name: &[u16]) -> Option<Data> {
+        let size = name.len() * size_of::<u16>();
+        if self.size - self.next < size {
+            return None;
+        }
+        // TODO: use Rust Layout
+        self.next = align_up(self.next, align_of::<u16>());
+        let n = unsafe { from_raw_parts_mut(
+                (self.addr as u64 + self.next as u64) as *mut u16,
+                name.len()) };
+        n.clone_from_slice(name);
+        let data = Data { offset: self.next, size: size };
+        self.next += size;
+        Some(data)
+    }
+
+    fn set_data(&mut self, data: &[u8]) -> Option<Data> {
+        let size = data.len() * size_of::<u8>();
+        if self.size - self.next < size {
+            return None;
+        }
+        let d = unsafe { from_raw_parts_mut(
+                (self.addr as u64 + self.next as u64) as *mut u8,
+                data.len()) };
+        d.clone_from_slice(data);
+        let data = Data { offset: self.next, size: size };
+        self.next += size;
+        Some(data)
+    }
+
+    fn append_data(&mut self, from: Data, data: &[u8]) -> Option<Data> {
+        let size = from.size + data.len() * size_of::<u8>();
+        if self.size - self.next < size {
+            return None;
+        }
+        let d = unsafe { from_raw_parts_mut(
+                (self.addr as u64 + self.next as u64) as *mut u8,
+                size) };
+        let from = unsafe { from_raw_parts(
+                (self.addr as u64 + from.offset as u64) as *const u8,
+                from.size / size_of::<u8>()) };
+        d[0..from.len()].clone_from_slice(from);
+        d[from.len()..].clone_from_slice(data);
+        // TODO: clear from slice content
+        let data = Data { offset: self.next, size: size };
+        self.next += size;
+        Some(data)
+    }
+
+    fn replace_data(&mut self, _from: Data, data: &[u8]) -> Option<Data> {
+        let size = data.len() * size_of::<u8>();
+        if self.size - self.next < size {
+            return None;
+        }
+        let d = unsafe { from_raw_parts_mut(
+                (self.addr as u64 + self.next as u64) as *mut u8,
+                data.len()) };
+        d.clone_from_slice(data);
+        // TODO: clear from slice content
+        let data = Data { offset: self.next, size: size };
+        self.next += size;
+        Some(data)
     }
 
     fn find(&self, name: *const u16, guid: *const efi::Guid) -> Option<usize> {
         if name.is_null() || guid.is_null() {
             return None;
         }
-        let len = crate::common::ucs2_as_ascii_length(name);
+        let len = common::ucs2_as_ascii_length(name);
         if len == 0 {
             return None;
         }
-
-        let s = unsafe { core::slice::from_raw_parts(name as *const u16, len + 1) };
-        let mut name: Vec<u16> = Vec::new();
-        name.extend_from_slice(s);
+        let name = unsafe { from_raw_parts(name, len + 1) };
         let guid = unsafe { &*guid };
-        for i in 0..self.allocations.len() {
-            if name == self.allocations[i].name && guid == &self.allocations[i].guid {
+        for (i, v) in self.vars.iter().enumerate() {
+            if self.get_name(v) == name && v.guid == *guid {
                 return Some(i);
             }
         }
@@ -75,24 +195,24 @@ impl VariableAllocator {
         if index == None {
             return efi::Status::NOT_FOUND;
         }
-        let a = &self.allocations[index.unwrap()];
+        let a = &self.vars[index.unwrap()];
         unsafe {
-            if *size < a.data.len() {
-                *size = a.data.len();
+            if *size < a.data.size {
+                *size = a.data.size;
                 return efi::Status::BUFFER_TOO_SMALL;
             }
         }
 
-        assert!(!a.data.is_empty());
+        assert!(a.data.size > 0);
         unsafe {
             if !attr.is_null() {
                 *attr = a.attr;
             }
-            *size = a.data.len();
-
-            let data = core::slice::from_raw_parts_mut(data as *mut u8, a.data.len());
-            data.clone_from_slice(&a.data);
+            *size = a.data.size;
         }
+
+        let data = unsafe { from_raw_parts_mut(data as *mut u8, *size) };
+        data.clone_from_slice(self.get_data(a));
 
         efi::Status::SUCCESS
     }
@@ -108,7 +228,7 @@ impl VariableAllocator {
         if name.is_null() || guid.is_null() {
             return efi::Status::INVALID_PARAMETER;
         }
-        let len = crate::common::ucs2_as_ascii_length(name);
+        let len = common::ucs2_as_ascii_length(name);
         if len == 0 {
             return efi::Status::INVALID_PARAMETER;
         }
@@ -122,16 +242,17 @@ impl VariableAllocator {
                 return efi::Status::INVALID_PARAMETER;
             }
             let mut a = Descriptor::new();
-            let name = unsafe { core::slice::from_raw_parts(name as *const u16, len + 1) };
-            a.name.extend_from_slice(name);
+            let name = unsafe { from_raw_parts(name as *const u16, len + 1) };
+            a.name = self.set_name(name).unwrap();
             a.guid = unsafe { *guid };
             a.attr = attr & !efi::VARIABLE_APPEND_WRITE;
-            let src = unsafe { core::slice::from_raw_parts(data as *const u8, size) };
-            a.data.extend_from_slice(src);
+            let data = unsafe { from_raw_parts(data as *const u8, size) };
+            a.data = self.set_data(data).unwrap();
 
-            self.allocations.push(a);
-
-            return efi::Status::SUCCESS;
+            match self.set_desc(&a) {
+                Some(_) => return efi::Status::SUCCESS,
+                None => return efi::Status::BUFFER_TOO_SMALL, // TODO
+            };
         }
 
         if attr & efi::VARIABLE_APPEND_WRITE != 0 {
@@ -142,33 +263,47 @@ impl VariableAllocator {
             if data.is_null() {
                 return efi::Status::INVALID_PARAMETER;
             }
-            let a = &mut self.allocations[index.unwrap()];
+            let mut a = self.vars[index.unwrap()];
             let attr = attr & !efi::VARIABLE_APPEND_WRITE;
             if a.attr != attr {
                 return efi::Status::INVALID_PARAMETER;
             }
-            let src = unsafe { core::slice::from_raw_parts(data as *const u8, size) };
-            a.data.extend_from_slice(src);
+            let data = unsafe { from_raw_parts(data as *const u8, size) };
+            a.data = self.append_data(a.data, data).unwrap();
+
+            self.vars[index.unwrap()] = a;
             return efi::Status::SUCCESS;
         }
 
         if attr == 0 || size == 0 {
-            self.allocations.remove(index.unwrap());
+            self.vars[index.unwrap()] = Descriptor::new();
+            // TODO: clear name and data
             return efi::Status::SUCCESS;
         }
 
-        let a = &mut self.allocations[index.unwrap()];
+        let mut a = self.vars[index.unwrap()];
         if attr != a.attr {
             return efi::Status::INVALID_PARAMETER;
         }
-        a.data.clear();
-        let src = unsafe { core::slice::from_raw_parts(data as *const u8, size) };
-        a.data.extend_from_slice(src);
+        let data = unsafe { from_raw_parts(data as *const u8, size) };
+        a.data = self.replace_data(a.data, data).unwrap();
 
+        self.vars[index.unwrap()] = a;
         efi::Status::SUCCESS
+    }
+
+    pub fn update_address(&mut self, mem_descs: &[efi::MemoryDescriptor]) -> Result<(), ()> {
+        for d in mem_descs.iter() {
+            if d.r#type == efi::MemoryType::RuntimeServicesData as u32 &&  d.physical_start == self.addr as u64 {
+                self.addr = d.virtual_start as usize;
+                return Ok(());
+            }
+        }
+        Err(())
     }
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::VariableAllocator;
@@ -344,3 +479,4 @@ mod tests {
         assert_eq!(data, [0; 1]);
     }
 }
+*/
