@@ -13,20 +13,17 @@
 // limitations under the License.
 
 use core::{
-//    alloc as heap_alloc,
     ffi::c_void,
     mem::{size_of, transmute},
     ptr::null_mut,
 };
 
 use atomic_refcell::AtomicRefCell;
-//use linked_list_allocator::LockedHeap;
 use r_efi::{
     efi::{
-        self, AllocateType, Boolean, CapsuleHeader, Char16, Event, EventNotify, Guid, Handle,
-        InterfaceType, LocateSearchType, MemoryDescriptor, MemoryType,
-        OpenProtocolInformationEntry, PhysicalAddress, ResetType, Status, Time, TimeCapabilities,
-        TimerDelay, Tpl,
+        self, AllocateType, Boolean, Char16, Event, EventNotify, Guid, Handle, InterfaceType,
+        LocateSearchType, MemoryDescriptor, MemoryType, OpenProtocolInformationEntry,
+        PhysicalAddress, Status, TimerDelay, Tpl,
     },
     protocols::{
         device_path::Protocol as DevicePathProtocol, loaded_image::Protocol as LoadedImageProtocol,
@@ -35,16 +32,13 @@ use r_efi::{
 
 use crate::boot;
 use crate::elf;
-//use crate::rtc;
 
 mod alloc;
 mod block;
 mod console;
 mod file;
-//mod var;
 
 use alloc::Allocator;
-//use var::VariableAllocator;
 
 #[derive(Copy, Clone, PartialEq)]
 enum HandleType {
@@ -61,23 +55,6 @@ struct HandleWrapper {
 }
 
 pub static ALLOCATOR: AtomicRefCell<Allocator> = AtomicRefCell::new(Allocator::new());
-
-/*
-#[cfg(not(test))]
-#[global_allocator]
-pub static HEAP_ALLOCATOR: LockedHeap = LockedHeap::empty();
-
-#[cfg(not(test))]
-#[alloc_error_handler]
-fn heap_alloc_error_handler(layout: heap_alloc::Layout) -> ! {
-    panic!("heap allocation error: {:?}", layout);
-}
-*/
-
-/*
-pub static VARIABLES: AtomicRefCell<VariableAllocator> =
-    AtomicRefCell::new(VariableAllocator::new());
-    */
 
 static mut ST: *mut efi::SystemTable = null_mut();
 
@@ -791,16 +768,14 @@ pub fn efi_exec(
     populate_allocator(info, loaded_address, loaded_size);
 
     let bin_start = unsafe { &BIN_START as *const _ as u64 };
-    let bin = unsafe { core::slice::from_raw_parts(&BIN_START as *const _ as *const u8, goblin::elf64::header::SIZEOF_EHDR) };
+    let bin = unsafe {
+        core::slice::from_raw_parts(
+            &BIN_START as *const _ as *const u8,
+            goblin::elf64::header::SIZEOF_EHDR,
+        )
+    };
     bytes.clone_from_slice(bin);
     let header = goblin::elf64::header::Header::from_bytes(&bytes);
-    /*
-    let (bss_start, bss_size) = elf::find_section(bin_start, header, ".bss").unwrap();
-    let bss_ptr = bss_start as *mut u8;
-    unsafe {
-        core::ptr::write_bytes(bss_ptr, 0x00, bss_size as usize);
-    }
-    */
     match elf::relocate(header, bin_start, bin_start) {
         Ok(_) => (),
         Err(_) => log!("relocation failed"),
@@ -822,7 +797,9 @@ pub fn efi_exec(
     log!("Run efi_runtime::main() at {:#x}...", entry);
     let ptr = entry as *const ();
     let code: fn(usize, usize) -> *mut efi::SystemTable = unsafe { transmute(ptr) };
-    unsafe { ST = (code)(heap_start as usize, HEAP_SIZE); }
+    unsafe {
+        ST = (code)(heap_start as usize, HEAP_SIZE);
+    }
     log!("SystemTable: {:#x}", unsafe { ST } as u64);
 
     let vendor_data = 0u32;

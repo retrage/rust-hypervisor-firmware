@@ -75,17 +75,15 @@ impl VariableAllocator {
     }
 
     fn get_name(&self, desc: &Descriptor) -> &[u16] {
-        let name = unsafe { from_raw_parts(
+        unsafe { from_raw_parts(
                 (self.addr as u64 + desc.name.offset as u64) as *const u16,
-                desc.name.size / size_of::<u16>()) };
-        return name;
+                desc.name.size / size_of::<u16>()) }
     }
 
     fn get_data(&self, desc: &Descriptor) -> &[u8] {
-        let data = unsafe { from_raw_parts(
+        unsafe { from_raw_parts(
                 (self.addr as u64 + desc.data.offset as u64) as *const u8,
-                desc.data.size / size_of::<u8>()) };
-        return data;
+                desc.data.size / size_of::<u8>()) }
     }
 
     fn set_desc(&mut self, desc: &Descriptor) -> Option<usize> {
@@ -109,7 +107,7 @@ impl VariableAllocator {
                 (self.addr as u64 + self.next as u64) as *mut u16,
                 name.len()) };
         n.clone_from_slice(name);
-        let data = Data { offset: self.next, size: size };
+        let data = Data { offset: self.next, size };
         self.next += size;
         Some(data)
     }
@@ -123,7 +121,7 @@ impl VariableAllocator {
                 (self.addr as u64 + self.next as u64) as *mut u8,
                 data.len()) };
         d.clone_from_slice(data);
-        let data = Data { offset: self.next, size: size };
+        let data = Data { offset: self.next, size };
         self.next += size;
         Some(data)
     }
@@ -142,7 +140,7 @@ impl VariableAllocator {
         d[0..from.len()].clone_from_slice(from);
         d[from.len()..].clone_from_slice(data);
         // TODO: clear from slice content
-        let data = Data { offset: self.next, size: size };
+        let data = Data { offset: self.next, size };
         self.next += size;
         Some(data)
     }
@@ -157,7 +155,7 @@ impl VariableAllocator {
                 data.len()) };
         d.clone_from_slice(data);
         // TODO: clear from slice content
-        let data = Data { offset: self.next, size: size };
+        let data = Data { offset: self.next, size };
         self.next += size;
         Some(data)
     }

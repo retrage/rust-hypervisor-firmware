@@ -359,6 +359,7 @@ impl Allocator {
         count
     }
 
+    #[allow(dead_code)]
     pub fn update_virtual_addresses(&mut self, descriptors: &[MemoryDescriptor]) -> Status {
         let mut i = 0;
 

@@ -1,32 +1,11 @@
-
-use core::{
-    mem::size_of,
-    slice::from_raw_parts,
-};
-use goblin::elf64::{
-    header::*,
-    program_header::*,
-    section_header::*,
-    dynamic::*,
-    reloc::*,
-};
-
-/*
-pub fn parse_header(start: u64, end: u64) -> Option<Header> {
-    let size = (end - start) as usize;
-    let bin = unsafe { from_raw_parts(start as *const u8, size) };
-    Header::parse(bin).ok()
-}
-*/
+use core::{mem::size_of, slice::from_raw_parts};
+use goblin::elf64::{dynamic::*, header::*, program_header::*, reloc::*, section_header::*};
 
 fn validate_header(header: &Header) -> bool {
     if header.e_machine != EM_X86_64 {
         return false;
     }
-    match header.e_type {
-        ET_EXEC | ET_DYN => true,
-        _ => false,
-    }
+    matches!(header.e_type, ET_EXEC | ET_DYN)
 }
 
 pub fn get_entry(start: u64, header: &Header) -> Option<u64> {
@@ -49,15 +28,6 @@ pub fn find_section(start: u64, header: &Header, section: &str) -> Option<(u64, 
     let shstrndx = header.e_shstrndx as usize;
     let shstr_addr = start + section_headers[shstrndx].sh_offset;
 
-    /*
-    for (i, sh) in section_headers.iter().enumerate() {
-        let addr = shstr_addr + sh.sh_name as u64;
-        let name = unsafe { crate::common::from_cstring(addr) };
-        let name = crate::common::ascii_strip(name);
-        log!("section[{}]: '{}' {:?}", i, name, sh);
-    }
-    */
-
     for sh in section_headers.iter() {
         let addr = shstr_addr + sh.sh_name as u64;
         let name = unsafe { crate::common::from_cstring(addr) };
@@ -73,7 +43,7 @@ pub fn find_section(start: u64, header: &Header, section: &str) -> Option<(u64, 
 pub fn relocate(header: &Header, from: u64, to: u64) -> Result<(), ()> {
     let ph_addr = (from + header.e_phoff) as *const ProgramHeader;
     let ph_size = header.e_phnum as usize;
-    let program_headers = unsafe { from_raw_parts(ph_addr, ph_size)};
+    let program_headers = unsafe { from_raw_parts(ph_addr, ph_size) };
     for ph in program_headers.iter() {
         if ph.p_type != PT_DYNAMIC {
             continue;
@@ -81,8 +51,8 @@ pub fn relocate(header: &Header, from: u64, to: u64) -> Result<(), ()> {
         let dyn_addr = (from + ph.p_offset) as *const Dyn;
         let dyn_size = (ph.p_filesz as usize) / size_of::<Dyn>();
         let dyns = unsafe { from_raw_parts(dyn_addr, dyn_size) };
-        let rela = dyns.into_iter().find(|&d| d.d_tag == DT_RELA).ok_or(())?;
-        let relasz = dyns.into_iter().find(|&d| d.d_tag == DT_RELASZ).ok_or(())?;
+        let rela = dyns.iter().find(|&d| d.d_tag == DT_RELA).ok_or(())?;
+        let relasz = dyns.iter().find(|&d| d.d_tag == DT_RELASZ).ok_or(())?;
         //log!("rela: {:?}, relasz: {:?}", rela, relasz);
         let rela_addr = (from + rela.d_val) as *const Rela;
         let rela_size = (relasz.d_val as usize) / size_of::<Rela>();
