@@ -1,46 +1,19 @@
 use core::{mem::size_of, slice::from_raw_parts};
-use goblin::elf64::{dynamic::*, header::*, program_header::*, reloc::*, section_header::*};
+use goblin::elf64::{dynamic::*, header::*, program_header::*, reloc::*};
 
-fn validate_header(header: &Header) -> bool {
-    if header.e_machine != EM_X86_64 {
-        return false;
+pub fn get_entry(start: u64) -> u64 {
+    let header = unsafe { &*(start as *const Header) };
+    if header.e_machine != EM_X86_64 || header.e_type != ET_DYN {
+        panic!("Unsupported ELF binary: {:?}", header);
     }
-    matches!(header.e_type, ET_EXEC | ET_DYN)
+    start + header.e_entry
 }
 
-pub fn get_entry(start: u64, header: &Header) -> Option<u64> {
-    if !validate_header(header) {
-        return None;
+pub fn relocate(from: u64, to: u64) -> Result<(), ()> {
+    let header = unsafe { &*(from as *const Header) };
+    if header.e_machine != EM_X86_64 || header.e_type != ET_DYN {
+        panic!("Unsupported ELF binary: {:?}", header);
     }
-
-    match header.e_type {
-        ET_EXEC => Some(header.e_entry),
-        ET_DYN => Some(start + header.e_entry),
-        _ => None,
-    }
-}
-
-pub fn find_section(start: u64, header: &Header, section: &str) -> Option<(u64, u64)> {
-    let sh_addr = (start + header.e_shoff) as *const SectionHeader;
-    let sh_size = header.e_shnum as usize;
-    let section_headers = unsafe { from_raw_parts(sh_addr, sh_size) };
-
-    let shstrndx = header.e_shstrndx as usize;
-    let shstr_addr = start + section_headers[shstrndx].sh_offset;
-
-    for sh in section_headers.iter() {
-        let addr = shstr_addr + sh.sh_name as u64;
-        let name = unsafe { crate::common::from_cstring(addr) };
-        if crate::common::ascii_strip(name) == section {
-            return Some((start + sh.sh_offset, sh.sh_size));
-        }
-    }
-
-    log!("section '{}' not found", section);
-    None
-}
-
-pub fn relocate(header: &Header, from: u64, to: u64) -> Result<(), ()> {
     let ph_addr = (from + header.e_phoff) as *const ProgramHeader;
     let ph_size = header.e_phnum as usize;
     let program_headers = unsafe { from_raw_parts(ph_addr, ph_size) };
@@ -53,7 +26,6 @@ pub fn relocate(header: &Header, from: u64, to: u64) -> Result<(), ()> {
         let dyns = unsafe { from_raw_parts(dyn_addr, dyn_size) };
         let rela = dyns.iter().find(|&d| d.d_tag == DT_RELA).ok_or(())?;
         let relasz = dyns.iter().find(|&d| d.d_tag == DT_RELASZ).ok_or(())?;
-        //log!("rela: {:?}, relasz: {:?}", rela, relasz);
         let rela_addr = (from + rela.d_val) as *const Rela;
         let rela_size = (relasz.d_val as usize) / size_of::<Rela>();
         let relas = unsafe { from_raw_parts(rela_addr, rela_size) };

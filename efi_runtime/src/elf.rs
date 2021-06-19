@@ -1,19 +1,10 @@
-
-use core::{
-    mem::size_of,
-    slice::from_raw_parts,
-};
-use goblin::elf64::{
-    header::*,
-    program_header::*,
-    dynamic::*,
-    reloc::*,
-};
+use core::{mem::size_of, slice::from_raw_parts};
+use goblin::elf64::{dynamic::*, header::*, program_header::*, reloc::*};
 
 pub fn relocate(header: &Header, from: u64, to: u64) -> Result<(), ()> {
     let ph_addr = (from + header.e_phoff) as *const ProgramHeader;
     let ph_size = header.e_phnum as usize;
-    let program_headers = unsafe { from_raw_parts(ph_addr, ph_size)};
+    let program_headers = unsafe { from_raw_parts(ph_addr, ph_size) };
     for ph in program_headers.iter() {
         if ph.p_type != PT_DYNAMIC {
             continue;

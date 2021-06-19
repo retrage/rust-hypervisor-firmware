@@ -17,10 +17,7 @@ struct Data {
 
 impl Data {
     const fn new() -> Self {
-        Self {
-            offset: 0,
-            size: 0,
-        }
+        Self { offset: 0, size: 0 }
     }
 }
 
@@ -75,15 +72,21 @@ impl VariableAllocator {
     }
 
     fn get_name(&self, desc: &Descriptor) -> &[u16] {
-        unsafe { from_raw_parts(
+        unsafe {
+            from_raw_parts(
                 (self.addr as u64 + desc.name.offset as u64) as *const u16,
-                desc.name.size / size_of::<u16>()) }
+                desc.name.size / size_of::<u16>(),
+            )
+        }
     }
 
     fn get_data(&self, desc: &Descriptor) -> &[u8] {
-        unsafe { from_raw_parts(
+        unsafe {
+            from_raw_parts(
                 (self.addr as u64 + desc.data.offset as u64) as *const u8,
-                desc.data.size / size_of::<u8>()) }
+                desc.data.size / size_of::<u8>(),
+            )
+        }
     }
 
     fn set_desc(&mut self, desc: &Descriptor) -> Option<usize> {
@@ -103,11 +106,17 @@ impl VariableAllocator {
         }
         // TODO: use Rust Layout
         self.next = align_up(self.next, align_of::<u16>());
-        let n = unsafe { from_raw_parts_mut(
+        let n = unsafe {
+            from_raw_parts_mut(
                 (self.addr as u64 + self.next as u64) as *mut u16,
-                name.len()) };
+                name.len(),
+            )
+        };
         n.clone_from_slice(name);
-        let data = Data { offset: self.next, size };
+        let data = Data {
+            offset: self.next,
+            size,
+        };
         self.next += size;
         Some(data)
     }
@@ -117,11 +126,14 @@ impl VariableAllocator {
         if self.size - self.next < size {
             return None;
         }
-        let d = unsafe { from_raw_parts_mut(
-                (self.addr as u64 + self.next as u64) as *mut u8,
-                data.len()) };
+        let d = unsafe {
+            from_raw_parts_mut((self.addr as u64 + self.next as u64) as *mut u8, data.len())
+        };
         d.clone_from_slice(data);
-        let data = Data { offset: self.next, size };
+        let data = Data {
+            offset: self.next,
+            size,
+        };
         self.next += size;
         Some(data)
     }
@@ -131,16 +143,21 @@ impl VariableAllocator {
         if self.size - self.next < size {
             return None;
         }
-        let d = unsafe { from_raw_parts_mut(
-                (self.addr as u64 + self.next as u64) as *mut u8,
-                size) };
-        let from = unsafe { from_raw_parts(
+        let d =
+            unsafe { from_raw_parts_mut((self.addr as u64 + self.next as u64) as *mut u8, size) };
+        let from = unsafe {
+            from_raw_parts(
                 (self.addr as u64 + from.offset as u64) as *const u8,
-                from.size / size_of::<u8>()) };
+                from.size / size_of::<u8>(),
+            )
+        };
         d[0..from.len()].clone_from_slice(from);
         d[from.len()..].clone_from_slice(data);
         // TODO: clear from slice content
-        let data = Data { offset: self.next, size };
+        let data = Data {
+            offset: self.next,
+            size,
+        };
         self.next += size;
         Some(data)
     }
@@ -150,12 +167,15 @@ impl VariableAllocator {
         if self.size - self.next < size {
             return None;
         }
-        let d = unsafe { from_raw_parts_mut(
-                (self.addr as u64 + self.next as u64) as *mut u8,
-                data.len()) };
+        let d = unsafe {
+            from_raw_parts_mut((self.addr as u64 + self.next as u64) as *mut u8, data.len())
+        };
         d.clone_from_slice(data);
         // TODO: clear from slice content
-        let data = Data { offset: self.next, size };
+        let data = Data {
+            offset: self.next,
+            size,
+        };
         self.next += size;
         Some(data)
     }
@@ -292,7 +312,9 @@ impl VariableAllocator {
 
     pub fn update_address(&mut self, mem_descs: &[efi::MemoryDescriptor]) -> Result<(), ()> {
         for d in mem_descs.iter() {
-            if d.r#type == efi::MemoryType::RuntimeServicesData as u32 &&  d.physical_start == self.addr as u64 {
+            if d.r#type == efi::MemoryType::RuntimeServicesData as u32
+                && d.physical_start == self.addr as u64
+            {
                 self.addr = d.virtual_start as usize;
                 return Ok(());
             }

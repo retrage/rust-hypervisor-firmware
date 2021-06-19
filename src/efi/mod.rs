@@ -622,17 +622,17 @@ fn extract_path(device_path: &DevicePathProtocol, path: &mut [u8]) {
 
 extern "C" {
     #[link_name = "ram_min"]
-    static RAM_MIN: c_void;
-    #[link_name = "data_end"]
-    static DATA_END: c_void;
-    #[link_name = "bin_start"]
-    static BIN_START: c_void;
-    #[link_name = "bin_end"]
-    static BIN_END: c_void;
+    static BS_CODE_START: c_void;
+    #[link_name = "code_end"]
+    static BS_CODE_END: c_void;
+    #[link_name = "efi_rt_start"]
+    static RT_CODE_START: c_void;
+    #[link_name = "efi_rt_end"]
+    static RT_CODE_END: c_void;
 }
 
 const PAGE_SIZE: u64 = 4096;
-const HEAP_SIZE: usize = 2 * 1024 * 1024;
+const RT_DATA_SIZE: u64 = 2 * 1024 * 1024;
 
 // Populate allocator from E820, fixed ranges for the firmware and the loaded binary.
 fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64) {
@@ -649,23 +649,23 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
     }
 
     // Add ourselves
-    let ram_min = unsafe { &RAM_MIN as *const _ as u64 };
-    let data_end = unsafe { &DATA_END as *const _ as u64 };
+    let bs_code_start = unsafe { &BS_CODE_START as *const _ as u64 };
+    let bs_code_end = unsafe { &BS_CODE_END as *const _ as u64 };
     ALLOCATOR.borrow_mut().allocate_pages(
         AllocateType::AllocateAddress,
         MemoryType::BootServicesCode,
-        (data_end - ram_min) / PAGE_SIZE,
-        ram_min,
+        (bs_code_end - bs_code_start) / PAGE_SIZE,
+        bs_code_start,
     );
 
-    // Add embedded EFI runtime binary
-    let bin_start = unsafe { &BIN_START as *const _ as u64 };
-    let bin_end = unsafe { &BIN_END as *const _ as u64 };
+    // Add EFI runtime code
+    let rt_code_start = unsafe { &RT_CODE_START as *const _ as u64 };
+    let rt_code_end = unsafe { &RT_CODE_END as *const _ as u64 };
     ALLOCATOR.borrow_mut().allocate_pages(
         AllocateType::AllocateAddress,
         MemoryType::RuntimeServicesCode,
-        (bin_end - bin_start) / PAGE_SIZE,
-        bin_start,
+        (rt_code_end - rt_code_start) / PAGE_SIZE,
+        rt_code_start,
     );
 
     // Add the loaded binary
@@ -755,6 +755,31 @@ fn new_image_handle(
     image
 }
 
+fn setup_efi_rt(rt_data_size: u64) {
+    // Allocate EFI runtime data
+    let (status, rt_data_addr) = ALLOCATOR.borrow_mut().allocate_pages(
+        AllocateType::AllocateAnyPages,
+        MemoryType::RuntimeServicesData,
+        rt_data_size / PAGE_SIZE,
+        0,
+    );
+    if status != efi::Status::SUCCESS {
+        panic!("Failed to allocate EFI runtime data");
+    }
+
+    let rt_code_start = unsafe { &RT_CODE_START as *const _ as u64 };
+    if elf::relocate(rt_code_start, rt_code_start).is_err() {
+        panic!("Failed to relocate EFI runtime code");
+    }
+
+    let entry = elf::get_entry(rt_code_start);
+    let ptr = entry as *const ();
+    let code: fn(usize, usize) -> *mut efi::SystemTable = unsafe { transmute(ptr) };
+    unsafe {
+        ST = (code)(rt_data_addr as usize, rt_data_size as usize);
+    }
+}
+
 pub fn efi_exec(
     address: u64,
     loaded_address: u64,
@@ -763,44 +788,9 @@ pub fn efi_exec(
     fs: &crate::fat::Filesystem,
     block: *const crate::block::VirtioBlockDevice,
 ) {
-    let mut bytes = [0_u8; goblin::elf64::header::SIZEOF_EHDR];
-
     populate_allocator(info, loaded_address, loaded_size);
 
-    let bin_start = unsafe { &BIN_START as *const _ as u64 };
-    let bin = unsafe {
-        core::slice::from_raw_parts(
-            &BIN_START as *const _ as *const u8,
-            goblin::elf64::header::SIZEOF_EHDR,
-        )
-    };
-    bytes.clone_from_slice(bin);
-    let header = goblin::elf64::header::Header::from_bytes(&bytes);
-    match elf::relocate(header, bin_start, bin_start) {
-        Ok(_) => (),
-        Err(_) => log!("relocation failed"),
-    };
-    log!("bin_start: {:#x}", bin_start);
-    let _ = elf::find_section(bin_start, header, ".data");
-
-    // Initialize heap allocator
-    let (status, heap_start) = ALLOCATOR.borrow_mut().allocate_pages(
-        AllocateType::AllocateAnyPages,
-        MemoryType::RuntimeServicesData,
-        HEAP_SIZE as u64 / PAGE_SIZE,
-        0,
-    );
-    assert!(status == Status::SUCCESS);
-    log!("heap_start: {:#x} HEAP_SIZE: {:#x}", heap_start, HEAP_SIZE);
-
-    let entry = elf::get_entry(bin_start, header).unwrap();
-    log!("Run efi_runtime::main() at {:#x}...", entry);
-    let ptr = entry as *const ();
-    let code: fn(usize, usize) -> *mut efi::SystemTable = unsafe { transmute(ptr) };
-    unsafe {
-        ST = (code)(heap_start as usize, HEAP_SIZE);
-    }
-    log!("SystemTable: {:#x}", unsafe { ST } as u64);
+    setup_efi_rt(RT_DATA_SIZE);
 
     let vendor_data = 0u32;
     let acpi_rsdp_ptr = info.rsdp_addr();
@@ -857,7 +847,6 @@ pub fn efi_exec(
         address,
     );
 
-    log!("Jumping in");
     let ptr = address as *const ();
     let code: extern "win64" fn(Handle, *mut efi::SystemTable) -> Status =
         unsafe { core::mem::transmute(ptr) };

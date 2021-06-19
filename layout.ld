@@ -32,12 +32,12 @@ SECTIONS
 
   .text   : { *(.text .text.*)     }
   .text32 : { *(.text32)           }
-  data_end = ALIGN(4K);
+  code_end = ALIGN(4K);
 
-  .bin    : ALIGN(4K) {
-    bin_start = .;
-    KEEP(*(.bin*))
-    bin_end = ALIGN(4K);
+  .efi_rt : ALIGN(4K) {
+    efi_rt_start = .;
+    KEEP(*(.efi_rt))
+    efi_rt_end = ALIGN(4K);
   }
 
   /* Strip symbols from the output binary (comment out to get symbols) */

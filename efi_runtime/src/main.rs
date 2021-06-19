@@ -1,27 +1,16 @@
 #![feature(asm)]
 #![no_std]
 #![no_main]
-
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
-use core::{
-    ffi::c_void,
-    mem::size_of,
-    panic::PanicInfo,
-    ptr::null_mut,
-};
+use core::{ffi::c_void, mem::size_of, panic::PanicInfo, ptr::null_mut};
 
 use atomic_refcell::AtomicRefCell;
-use x86_64::instructions::hlt;
-#[allow(unused_imports)]
-use r_efi::{
-    efi::{
-        self, AllocateType, Boolean, CapsuleHeader, Char16, Event, EventNotify, Guid, Handle,
-        InterfaceType, LocateSearchType, MemoryDescriptor, MemoryType,
-        OpenProtocolInformationEntry, PhysicalAddress, ResetType, Status, Time, TimeCapabilities,
-        TimerDelay, Tpl,
-    },
+use r_efi::efi::{
+    self, Boolean, CapsuleHeader, Char16, Guid, MemoryDescriptor, MemoryType, PhysicalAddress,
+    ResetType, Status, Time, TimeCapabilities,
 };
+use x86_64::instructions::hlt;
 
 mod common;
 mod delay;
@@ -47,10 +36,10 @@ static mut RS: efi::RuntimeServices = efi::RuntimeServices {
     hdr: efi::TableHeader {
         signature: efi::RUNTIME_SERVICES_SIGNATURE,
         revision: efi::RUNTIME_SERVICES_REVISION,
-        header_size: size_of::<efi::RuntimeServices>() as u32, 
+        header_size: size_of::<efi::RuntimeServices>() as u32,
         crc32: 0, // TODO
         reserved: 0,
-    },   
+    },
     get_time,
     set_time,
     get_wakeup_time,
@@ -69,11 +58,11 @@ static mut RS: efi::RuntimeServices = efi::RuntimeServices {
 
 static mut ST: efi::SystemTable = efi::SystemTable {
     hdr: efi::TableHeader {
-    signature: efi::SYSTEM_TABLE_SIGNATURE,
-    revision: efi::SYSTEM_TABLE_REVISION_2_70,
-    header_size: size_of::<efi::SystemTable>() as u32,
-    crc32: 0, // TODO
-    reserved: 0,
+        signature: efi::SYSTEM_TABLE_SIGNATURE,
+        revision: efi::SYSTEM_TABLE_REVISION_2_70,
+        header_size: size_of::<efi::SystemTable>() as u32,
+        crc32: 0, // TODO
+        reserved: 0,
     },
     firmware_vendor: null_mut(), // TODO,
     firmware_revision: 0,
@@ -140,29 +129,30 @@ extern "C" {
 pub extern "win64" fn set_virtual_address_map(
     map_size: usize,
     descriptor_size: usize,
-    version: u32, 
+    version: u32,
     descriptors: *mut MemoryDescriptor,
 ) -> Status {
-    log!("set_virtual_address_map");
     let count = map_size / descriptor_size;
 
     if version != efi::MEMORY_DESCRIPTOR_VERSION {
         return Status::INVALID_PARAMETER;
     }
 
-    let descriptors = unsafe {
-        core::slice::from_raw_parts_mut(descriptors, count)
-    };
+    let descriptors = unsafe { core::slice::from_raw_parts_mut(descriptors, count) };
 
     let start = unsafe { &START as *const _ as u64 };
     let _end = unsafe { &END as *const _ as u64 };
     let mut bytes = [0_u8; goblin::elf64::header::SIZEOF_EHDR];
-    let bin = unsafe { core::slice::from_raw_parts(start as *const u8, goblin::elf64::header::SIZEOF_EHDR) };
+    let bin = unsafe {
+        core::slice::from_raw_parts(start as *const u8, goblin::elf64::header::SIZEOF_EHDR)
+    };
     bytes.clone_from_slice(bin);
     let header = goblin::elf64::header::Header::from_bytes(&bytes);
 
     for descriptor in descriptors.iter() {
-        if descriptor.r#type == MemoryType::RuntimeServicesCode as u32 && descriptor.physical_start == start {
+        if descriptor.r#type == MemoryType::RuntimeServicesCode as u32
+            && descriptor.physical_start == start
+        {
             match elf::relocate(header, descriptor.physical_start, descriptor.virtual_start) {
                 Ok(_) => (),
                 Err(_) => log!("relocation failed"),
@@ -175,7 +165,6 @@ pub extern "win64" fn set_virtual_address_map(
         Err(_) => log!("Failed to update variable address"),
     };
 
-    log!("set_virtual_address_map done");
     Status::SUCCESS
 }
 
@@ -255,16 +244,14 @@ pub extern "win64" fn query_variable_info(
 }
 
 #[no_mangle]
-fn main(vars_start: usize, vars_size: usize) -> *mut efi::SystemTable {
+fn main(rt_data_start: usize, rt_data_size: usize) -> *mut efi::SystemTable {
     serial::PORT.borrow_mut().init();
 
-    VARIABLES.borrow_mut().init(vars_start, vars_size);
+    VARIABLES.borrow_mut().init(rt_data_start, rt_data_size);
 
     unsafe {
         ST.runtime_services = &mut RS as *mut _;
     }
 
-    unsafe {
-        &mut ST as *mut _
-    }
+    unsafe { &mut ST as *mut _ }
 }

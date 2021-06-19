@@ -37,7 +37,7 @@ fn build_lib(src_path: &Path) {
     objcopy.arg("-Ibinary").arg("-Bi386").arg("-Oelf64-x86-64");
     objcopy
         .arg("--rename-section")
-        .arg(".data=.bin.data,alloc,load,data,contents");
+        .arg(".data=.efi_rt,alloc,load,data,contents");
     objcopy.arg(elf_path).arg(&obj_path);
 
     if !objcopy.status().unwrap().success() {
