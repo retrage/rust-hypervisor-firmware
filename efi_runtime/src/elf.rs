@@ -1,7 +1,11 @@
 use core::{mem::size_of, slice::from_raw_parts};
 use goblin::elf64::{dynamic::*, header::*, program_header::*, reloc::*};
 
-pub fn relocate(header: &Header, from: u64, to: u64) -> Result<(), ()> {
+pub fn relocate(from: u64, to: u64) -> Result<(), ()> {
+    let header = unsafe { &*(from as *const Header) };
+    if header.e_machine != EM_X86_64 || header.e_type != ET_DYN {
+        panic!("Unsupported ELF binary: {:?}", header);
+    }
     let ph_addr = (from + header.e_phoff) as *const ProgramHeader;
     let ph_size = header.e_phnum as usize;
     let program_headers = unsafe { from_raw_parts(ph_addr, ph_size) };

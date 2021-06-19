@@ -310,16 +310,20 @@ impl VariableAllocator {
         efi::Status::SUCCESS
     }
 
-    pub fn update_address(&mut self, mem_descs: &[efi::MemoryDescriptor]) -> Result<(), ()> {
+    pub fn update_address(&mut self, mem_descs: &[efi::MemoryDescriptor]) -> efi::Status {
+        const PAGE_SIZE: usize = 4 * 1024;
         for d in mem_descs.iter() {
             if d.r#type == efi::MemoryType::RuntimeServicesData as u32
-                && d.physical_start == self.addr as u64
+                && d.physical_start <= self.addr as u64
+                && (self.addr + self.size) as u64
+                    <= d.physical_start + d.number_of_pages * PAGE_SIZE as u64
             {
-                self.addr = d.virtual_start as usize;
-                return Ok(());
+                let diff = (d.virtual_start - d.physical_start) as usize;
+                self.addr += diff;
+                return efi::Status::SUCCESS;
             }
         }
-        Err(())
+        efi::Status::NOT_FOUND
     }
 }
 

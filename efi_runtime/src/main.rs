@@ -1,9 +1,11 @@
 #![feature(asm)]
-#![no_std]
-#![no_main]
+#![cfg_attr(not(test), no_std)]
+#![cfg_attr(not(test), no_main)]
+#![cfg_attr(test, allow(unused_imports, dead_code))]
+#![cfg_attr(not(feature = "log-serial"), allow(unused_variables, unused_imports))]
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
-use core::{ffi::c_void, mem::size_of, panic::PanicInfo, ptr::null_mut};
+use core::{ffi::c_void, mem::size_of, panic::PanicInfo, ptr::null_mut, slice::from_raw_parts};
 
 use atomic_refcell::AtomicRefCell;
 use r_efi::efi::{
@@ -22,6 +24,7 @@ mod var;
 
 use var::VariableAllocator;
 
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     log!("PANIC: {}", info);
@@ -121,9 +124,29 @@ pub extern "win64" fn set_wakeup_time(_: Boolean, _: *mut Time) -> Status {
 
 extern "C" {
     #[link_name = "start"]
-    static START: core::ffi::c_void;
+    static START: c_void;
     #[link_name = "end"]
-    static END: core::ffi::c_void;
+    static END: c_void;
+}
+
+const PAGE_SIZE: usize = 4 * 1024;
+
+fn relocate(descriptors: &[MemoryDescriptor]) -> Status {
+    let start = unsafe { &START as *const _ as u64 };
+    let end = unsafe { &END as *const _ as u64 };
+
+    for d in descriptors.iter() {
+        if d.r#type == MemoryType::RuntimeServicesCode as u32
+            && d.physical_start <= start
+            && end <= d.physical_start + PAGE_SIZE as u64 * d.number_of_pages
+        {
+            return match elf::relocate(d.physical_start, d.virtual_start) {
+                Ok(()) => Status::SUCCESS,
+                Err(()) => Status::NO_MAPPING,
+            };
+        }
+    }
+    Status::NOT_FOUND
 }
 
 pub extern "win64" fn set_virtual_address_map(
@@ -138,34 +161,14 @@ pub extern "win64" fn set_virtual_address_map(
         return Status::INVALID_PARAMETER;
     }
 
-    let descriptors = unsafe { core::slice::from_raw_parts_mut(descriptors, count) };
+    let descriptors = unsafe { from_raw_parts(descriptors, count) };
 
-    let start = unsafe { &START as *const _ as u64 };
-    let _end = unsafe { &END as *const _ as u64 };
-    let mut bytes = [0_u8; goblin::elf64::header::SIZEOF_EHDR];
-    let bin = unsafe {
-        core::slice::from_raw_parts(start as *const u8, goblin::elf64::header::SIZEOF_EHDR)
-    };
-    bytes.clone_from_slice(bin);
-    let header = goblin::elf64::header::Header::from_bytes(&bytes);
-
-    for descriptor in descriptors.iter() {
-        if descriptor.r#type == MemoryType::RuntimeServicesCode as u32
-            && descriptor.physical_start == start
-        {
-            match elf::relocate(header, descriptor.physical_start, descriptor.virtual_start) {
-                Ok(_) => (),
-                Err(_) => log!("relocation failed"),
-            };
-        }
+    let status = relocate(descriptors);
+    if status != Status::SUCCESS {
+        return status;
     }
 
-    match VARIABLES.borrow_mut().update_address(descriptors) {
-        Ok(_) => (),
-        Err(_) => log!("Failed to update variable address"),
-    };
-
-    Status::SUCCESS
+    VARIABLES.borrow_mut().update_address(descriptors)
 }
 
 pub extern "win64" fn convert_pointer(_: usize, _: *mut *mut c_void) -> Status {

@@ -3,6 +3,18 @@ name = "efi_runtime"
 version = "0.1.0"
 edition = "2018"
 
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = "thin"
+
+[features]
+default = ["log-serial", "log-panic"]
+log-serial = []
+log-panic = ["log-serial"]
+
 [dependencies]
 atomic_refcell = "0.1.7"
 uart_16550 = "0.2.14"
