@@ -32,15 +32,107 @@ pub const STDERR_HANDLE: Handle = &HandleWrapper {
     handle_type: HandleType::None,
 } as *const _ as Handle;
 
+enum Scan {
+    NULL,
+    UP,
+    DOWN,
+    RIGHT,
+    LEFT,
+    HOME,
+    END,
+    INSERT,
+    DELETE,
+    PAGE_UP,
+    PAGE_DOWN,
+    F1,
+    F2,
+    F3,
+    F4,
+    F5,
+    F6,
+    F7,
+    F8,
+    F9,
+    F10,
+    ESC = 0x0017,
+}
+
 pub extern "win64" fn stdin_reset(_: *mut SimpleTextInputProtocol, _: Boolean) -> Status {
     Status::UNSUPPORTED
 }
 
 pub extern "win64" fn stdin_read_key_stroke(
     _: *mut SimpleTextInputProtocol,
-    _: *mut InputKey,
+    key: *mut InputKey,
 ) -> Status {
-    Status::NOT_READY
+    if key.is_null() {
+        return Status::INVALID_PARAMETER;
+    }
+
+    let mut serial = crate::serial::Serial;
+
+    let mut unicode_char = 0_u16;
+    let mut scan_code = Scan::NULL;
+    let c = serial.receive();
+    if c == 0x1b {
+        let c = serial.receive();
+        if c == b'[' {
+            let c = serial.receive();
+            scan_code = match c {
+                b'A' => Scan::UP,
+                b'B' => Scan::DOWN,
+                b'C' => Scan::RIGHT,
+                b'D' => Scan::LEFT,
+                b'H' => Scan::HOME,
+                b'K' | b'F' => Scan::END,
+                b'@' | b'L' => Scan::INSERT,
+                b'P' | b'X' => Scan::DELETE,
+                b'U' | b'/' | b'G' => Scan::PAGE_DOWN,
+                b'V' | b'?' | b'I' => Scan::PAGE_UP,
+                b'M' => Scan::F1,
+                b'N' => Scan::F2,
+                b'O' => Scan::F3,
+                b'Q' => Scan::F5,
+                b'R' => Scan::F6,
+                b'S' => Scan::F7,
+                b'T' => Scan::F8,
+                _ => {
+                    unicode_char = c as u16;
+                    Scan::NULL
+                },
+            };
+        } else if c == b'0' {
+            let c = serial.receive();
+            scan_code = match c {
+                b'P' => Scan::F1,
+                b'Q' => Scan::F2,
+                b'w' => Scan::F3,
+                b'x' => Scan::F4,
+                b't' => Scan::F5,
+                b'u' => Scan::F6,
+                b'q' => Scan::F7,
+                b'r' => Scan::F8,
+                b'p' => Scan::F9,
+                b'm' => Scan::F10,
+                _ => Scan::NULL,
+            };
+        } else if c < b' ' {
+            if c == 0x08 || c == 0x09 || c == 0x0a || c == 0x0d {
+                unicode_char = c as u16;
+            }
+        } else if c == 0x7f {
+            scan_code = Scan::DELETE;
+        } else {
+            unicode_char = c as u16;
+        }
+    }
+
+    unsafe {
+        (*key).scan_code = scan_code as u16;
+        (*key).unicode_char = unicode_char;
+    }
+
+    Status::SUCCESS
 }
 
 pub extern "win64" fn stdout_reset(_: *mut SimpleTextOutputProtocol, _: Boolean) -> Status {

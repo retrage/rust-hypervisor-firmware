@@ -30,6 +30,12 @@ impl fmt::Write for Serial {
     }
 }
 
+impl Serial {
+    pub fn receive(&mut self) -> u8 {
+        PORT.borrow_mut().receive()
+    }
+}
+
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => {{
