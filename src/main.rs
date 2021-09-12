@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![feature(const_fn_fn_ptr_basics)]
 #![feature(alloc_error_handler)]
 #![feature(asm, global_asm)]
 #![feature(stmt_expr_attributes)]
@@ -33,6 +34,7 @@ mod serial;
 #[macro_use]
 mod common;
 
+mod acpi;
 #[cfg(not(test))]
 mod asm;
 mod block;
@@ -53,6 +55,7 @@ mod pci;
 mod pe;
 mod pvh;
 mod rtc;
+mod tpm;
 mod virtio;
 
 #[cfg(all(not(test), feature = "log-panic"))]

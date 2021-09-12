@@ -33,6 +33,7 @@ use r_efi::{
     },
 };
 
+use crate::acpi;
 use crate::boot;
 use crate::rtc;
 
@@ -40,6 +41,7 @@ mod alloc;
 mod block;
 mod console;
 mod file;
+mod tpm;
 mod var;
 
 use alloc::Allocator;
@@ -51,6 +53,7 @@ enum HandleType {
     Block,
     FileSystem,
     LoadedImage,
+    Tpm,
 }
 
 #[repr(C)]
@@ -178,6 +181,13 @@ static mut BLOCK_WRAPPERS: block::BlockWrappers = block::BlockWrappers {
     wrappers: [null_mut(); 16],
     count: 0,
 };
+
+static mut TPM2_WRAPPER: tpm::Wrapper = tpm::Wrapper::new();
+static mut TPM2_WRAPPERS: tpm::Wrappers = tpm::Wrappers {
+    wrappers: [unsafe { &TPM2_WRAPPER as *const _}],
+    count: 1,
+};
+
 
 fn convert_internal_pointer(descriptors: &[alloc::MemoryDescriptor], ptr: u64) -> Option<u64> {
     for descriptor in descriptors.iter() {
@@ -590,6 +600,26 @@ pub extern "win64" fn locate_handle(
         return Status::SUCCESS;
     }
 
+    if unsafe { *guid } == tpm::PROTOCOL_GUID {
+        let count = 1;
+        if unsafe { *size } < size_of::<Handle>() * count {
+            unsafe { *size = size_of::<Handle>() * count };
+            return Status::BUFFER_TOO_SMALL;
+        }
+
+        let handles = unsafe { core::slice::from_raw_parts_mut(handles, *size / size_of::<Handle>()) };
+
+        let wrappers_as_handles: &[Handle] = unsafe {
+            core::slice::from_raw_parts_mut(TPM2_WRAPPERS.wrappers.as_mut_ptr() as *mut *mut tpm::Wrapper as *mut Handle, count)
+        };
+
+        handles[0..count].copy_from_slice(wrappers_as_handles);
+
+        unsafe { *size = size_of::<Handle>() * count };
+
+        return Status::SUCCESS;
+    }
+
     Status::UNSUPPORTED
 }
 
@@ -602,7 +632,7 @@ pub extern "win64" fn locate_device_path(
 }
 
 pub extern "win64" fn install_configuration_table(_: *mut Guid, _: *mut c_void) -> Status {
-    Status::UNSUPPORTED
+    Status::SUCCESS
 }
 
 pub extern "win64" fn load_image(
@@ -771,6 +801,14 @@ pub extern "win64" fn open_protocol(
     if unsafe { *guid } == block::PROTOCOL_GUID && handle_type == HandleType::Block {
         unsafe {
             *out = &mut (*(handle as *mut block::BlockWrapper)).proto as *mut _ as *mut c_void;
+        }
+
+        return Status::SUCCESS;
+    }
+
+    if unsafe { *guid } == tpm::PROTOCOL_GUID && handle_type == HandleType::Tpm {
+        unsafe {
+            *out = &mut (*(handle as *mut tpm::Wrapper)).proto as *mut _ as *mut c_void;
         }
 
         return Status::SUCCESS;
@@ -1034,6 +1072,19 @@ fn new_image_handle(
     image
 }
 
+fn init_tpm_potocol(rsdp_addr: usize) -> Result<(), ()> {
+    let tpm2_addr = acpi::find_from_rsdp(rsdp_addr, &b"TPM2").ok_or(())?;
+    let tpm2 = unsafe { &*(tpm2_addr as *const acpi::Tpm2) };
+    if tpm2.start_method != 6 {
+        // 6: MMIO interface (TIS 1.2+Cancel) support only
+        // TODO: set TPM2_WRAPPER.cap
+        return Err(());
+    }
+    unsafe { TPM2_WRAPPER.init(tpm2.log_area_start_address)?; }
+
+    Ok(())
+}
+
 pub fn efi_exec(
     address: u64,
     loaded_address: u64,
@@ -1044,6 +1095,10 @@ pub fn efi_exec(
 ) {
     let vendor_data = 0u32;
     let acpi_rsdp_ptr = info.rsdp_addr();
+
+    if init_tpm_potocol(acpi_rsdp_ptr as usize).is_err() {
+        log!("Could not populate TPM protocol instance");
+    }
 
     let mut ct = if acpi_rsdp_ptr != 0 {
         efi::ConfigurationTable {
