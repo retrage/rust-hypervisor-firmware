@@ -10,6 +10,12 @@ const NSECS_PER_SEC: u64 = 1000000000;
 const CPU_KHZ_DEFAULT: u64 = 200;
 const PAUSE_THRESHOLD_TICKS: u64 = 150;
 
+#[cfg(not(target_arch = "x86_64"))]
+pub fn ndelay(_ns: u64) {
+    // Stub ndelay for non-x86 arch.
+}
+
+#[cfg(target_arch = "x86_64")]
 pub fn ndelay(ns: u64) {
     let delta = ns * CPU_KHZ_DEFAULT / NSECS_PER_SEC;
     let mut pause_delta = 0;

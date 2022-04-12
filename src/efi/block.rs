@@ -89,7 +89,8 @@ pub struct BlockIoProtocol {
 #[repr(C)]
 pub struct BlockWrapper<'a> {
     hw: super::HandleWrapper,
-    block: *const crate::block::VirtioBlockDevice<'a>,
+    // block: *const crate::block::VirtioBlockDevice<'a>,
+    block: *const crate::block::NvmeBlockDevice<'a>,
     media: BlockIoMedia,
     pub proto: BlockIoProtocol,
     // The ordering of these paths are very important, along with the C
@@ -104,11 +105,11 @@ pub struct BlockWrappers<'a> {
     pub count: usize,
 }
 
-pub extern "win64" fn reset(_: *mut BlockIoProtocol, _: bool) -> Status {
+pub extern "C" fn reset(_: *mut BlockIoProtocol, _: bool) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn read_blocks(
+pub extern "C" fn read_blocks(
     proto: *mut BlockIoProtocol,
     _: u32,
     start: u64,
@@ -136,7 +137,7 @@ pub extern "win64" fn read_blocks(
     Status::SUCCESS
 }
 
-pub extern "win64" fn write_blocks(
+pub extern "C" fn write_blocks(
     proto: *mut BlockIoProtocol,
     _: u32,
     start: u64,
@@ -164,7 +165,7 @@ pub extern "win64" fn write_blocks(
     Status::SUCCESS
 }
 
-pub extern "win64" fn flush_blocks(proto: *mut BlockIoProtocol) -> Status {
+pub extern "C" fn flush_blocks(proto: *mut BlockIoProtocol) -> Status {
     let wrapper = container_of!(proto, BlockWrapper, proto);
     let wrapper = unsafe { &*wrapper };
     use crate::block::SectorWrite;
@@ -177,7 +178,8 @@ pub extern "win64" fn flush_blocks(proto: *mut BlockIoProtocol) -> Status {
 
 impl<'a> BlockWrapper<'a> {
     pub fn new(
-        block: *const crate::block::VirtioBlockDevice,
+        // block: *const crate::block::VirtioBlockDevice,
+        block: *const crate::block::NvmeBlockDevice,
         partition_number: u32,
         start_lba: u64,
         last_lba: u64,
@@ -300,7 +302,8 @@ impl<'a> BlockWrapper<'a> {
 #[allow(clippy::transmute_ptr_to_ptr)]
 pub fn populate_block_wrappers(
     wrappers: &mut BlockWrappers,
-    block: *const crate::block::VirtioBlockDevice,
+    // block: *const crate::block::VirtioBlockDevice,
+    block: *const crate::block::NvmeBlockDevice,
 ) -> Option<u32> {
     let mut parts: [crate::part::PartitionEntry; 16] = unsafe { core::mem::zeroed() };
 

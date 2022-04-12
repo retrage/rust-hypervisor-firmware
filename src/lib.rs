@@ -15,16 +15,14 @@
 #![feature(alloc_error_handler)]
 #![feature(stmt_expr_attributes)]
 #![cfg_attr(not(test), no_std)]
-#![cfg_attr(not(test), no_main)]
+// #![cfg_attr(not(test), no_main)]
 #![cfg_attr(test, allow(unused_imports, dead_code))]
 #![cfg_attr(not(feature = "log-serial"), allow(unused_variables, unused_imports))]
 
-use core::panic::PanicInfo;
+use core::ffi::c_void;
+use cty::*;
 
-use x86_64::{
-    instructions::hlt,
-    registers::control::{Cr0, Cr0Flags, Cr4, Cr4Flags},
-};
+use core::panic::PanicInfo;
 
 #[macro_use]
 mod serial;
@@ -32,35 +30,47 @@ mod serial;
 #[macro_use]
 mod common;
 
-#[cfg(not(test))]
-mod asm;
+// #[cfg(not(test))]
+// mod asm;
 mod block;
 mod boot;
 mod bzimage;
-mod coreboot;
+// mod coreboot;
 mod delay;
 mod efi;
 mod fat;
-mod gdt;
-#[cfg(all(test, feature = "integration_tests"))]
-mod integration;
+// mod gdt;
+// #[cfg(all(test, feature = "integration_tests"))]
+// mod integration;
 mod loader;
 mod mem;
-mod paging;
+// mod paging;
 mod part;
-mod pci;
+// mod pci;
 mod pe;
-mod pvh;
-mod rtc;
-mod virtio;
+// mod pvh;
+// mod rtc;
+// mod virtio;
 
-#[cfg(all(not(test), feature = "log-panic"))]
+#[cfg(all(not(test), feature = "log-panic", target_arch = "x86_64"))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     log!("PANIC: {}", info);
     loop {
         hlt()
     }
+}
+
+extern "C" {
+    fn flush_and_reboot();
+}
+
+#[cfg(all(not(test), feature = "log-panic", target_arch = "aarch64"))]
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    log!("PANIC: {}", info);
+    unsafe { flush_and_reboot() };
+    loop {}
 }
 
 #[cfg(all(not(test), not(feature = "log-panic")))]
@@ -70,6 +80,7 @@ fn panic(_: &PanicInfo) -> ! {
 }
 
 // Enable SSE2 for XMM registers (needed for EFI calling)
+#[cfg(target_arch = "x86_64")]
 fn enable_sse() {
     let mut cr0 = Cr0::read();
     cr0.remove(Cr0Flags::EMULATE_COPROCESSOR);
@@ -84,6 +95,7 @@ fn enable_sse() {
 const VIRTIO_PCI_VENDOR_ID: u16 = 0x1af4;
 const VIRTIO_PCI_BLOCK_DEVICE_ID: u16 = 0x1042;
 
+#[cfg(target_arch = "x86_64")]
 fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn boot::Info) -> bool {
     if let Err(err) = device.init() {
         log!("Error configuring block device: {:?}", err);
@@ -145,7 +157,7 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn boot::Info
 }
 
 #[no_mangle]
-#[cfg(not(feature = "coreboot"))]
+#[cfg(all(not(feature = "coreboot"), target_arch = "x86_64"))]
 pub extern "C" fn rust64_start(rdi: &pvh::StartInfo) -> ! {
     serial::PORT.borrow_mut().init();
 
@@ -156,7 +168,7 @@ pub extern "C" fn rust64_start(rdi: &pvh::StartInfo) -> ! {
 }
 
 #[no_mangle]
-#[cfg(feature = "coreboot")]
+#[cfg(all(feature = "coreboot", target_arch = "x86_64"))]
 pub extern "C" fn rust64_start() -> ! {
     serial::PORT.borrow_mut().init();
 
@@ -168,6 +180,7 @@ pub extern "C" fn rust64_start() -> ! {
     main(&info)
 }
 
+#[cfg(target_arch = "x86_64")]
 fn main(info: &dyn boot::Info) -> ! {
     log!("\nBooting with {}", info.name());
 
@@ -184,4 +197,14 @@ fn main(info: &dyn boot::Info) -> ! {
     );
 
     panic!("Unable to boot from any virtio-blk device")
+}
+
+#[no_mangle]
+#[cfg(target_arch = "aarch64")]
+pub unsafe extern "C" fn rust_load_image(
+    raw_spec: *const c_char,
+    image: *mut *mut c_void,
+    size: *mut size_t,
+) -> c_int {
+    0
 }

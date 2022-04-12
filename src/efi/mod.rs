@@ -34,7 +34,7 @@ use r_efi::{
 };
 
 use crate::boot;
-use crate::rtc;
+// use crate::rtc;
 
 mod alloc;
 mod block;
@@ -216,11 +216,12 @@ unsafe fn fixup_at_virtual(descriptors: &[alloc::MemoryDescriptor]) {
     st.runtime_services = transmute(ptr);
 }
 
-pub extern "win64" fn not_available() -> Status {
+pub extern "C" fn not_available() -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Status {
+#[cfg(target_arch = "x86_64")]
+pub extern "C" fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Status {
     if time.is_null() {
         return Status::INVALID_PARAMETER;
     }
@@ -249,19 +250,28 @@ pub extern "win64" fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Sta
     Status::SUCCESS
 }
 
-pub extern "win64" fn set_time(_: *mut Time) -> Status {
+#[cfg(target_arch = "aarch64")]
+pub extern "C" fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Status {
+    if time.is_null() {
+        return Status::INVALID_PARAMETER;
+    }
+
     Status::DEVICE_ERROR
 }
 
-pub extern "win64" fn get_wakeup_time(_: *mut Boolean, _: *mut Boolean, _: *mut Time) -> Status {
+pub extern "C" fn set_time(_: *mut Time) -> Status {
+    Status::DEVICE_ERROR
+}
+
+pub extern "C" fn get_wakeup_time(_: *mut Boolean, _: *mut Boolean, _: *mut Time) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn set_wakeup_time(_: Boolean, _: *mut Time) -> Status {
+pub extern "C" fn set_wakeup_time(_: Boolean, _: *mut Time) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn set_virtual_address_map(
+pub extern "C" fn set_virtual_address_map(
     map_size: usize,
     descriptor_size: usize,
     version: u32,
@@ -284,11 +294,11 @@ pub extern "win64" fn set_virtual_address_map(
     ALLOCATOR.borrow_mut().update_virtual_addresses(descriptors)
 }
 
-pub extern "win64" fn convert_pointer(_: usize, _: *mut *mut c_void) -> Status {
+pub extern "C" fn convert_pointer(_: usize, _: *mut *mut c_void) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn get_variable(
+pub extern "C" fn get_variable(
     variable_name: *mut Char16,
     vendor_guid: *mut Guid,
     attributes: *mut u32,
@@ -304,7 +314,7 @@ pub extern "win64" fn get_variable(
     }
 }
 
-pub extern "win64" fn get_next_variable_name(
+pub extern "C" fn get_next_variable_name(
     _: *mut usize,
     _: *mut Char16,
     _: *mut Guid,
@@ -312,7 +322,7 @@ pub extern "win64" fn get_next_variable_name(
     Status::NOT_FOUND
 }
 
-pub extern "win64" fn set_variable(
+pub extern "C" fn set_variable(
     variable_name: *mut Char16,
     vendor_guid: *mut Guid,
     attributes: u32,
@@ -328,15 +338,15 @@ pub extern "win64" fn set_variable(
     }
 }
 
-pub extern "win64" fn get_next_high_mono_count(_: *mut u32) -> Status {
+pub extern "C" fn get_next_high_mono_count(_: *mut u32) -> Status {
     Status::DEVICE_ERROR
 }
 
-pub extern "win64" fn reset_system(_: ResetType, _: Status, _: usize, _: *mut c_void) {
+pub extern "C" fn reset_system(_: ResetType, _: Status, _: usize, _: *mut c_void) {
     // Don't do anything to force the kernel to use ACPI for shutdown and triple-fault for reset
 }
 
-pub extern "win64" fn update_capsule(
+pub extern "C" fn update_capsule(
     _: *mut *mut CapsuleHeader,
     _: usize,
     _: PhysicalAddress,
@@ -344,7 +354,7 @@ pub extern "win64" fn update_capsule(
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn query_capsule_capabilities(
+pub extern "C" fn query_capsule_capabilities(
     _: *mut *mut CapsuleHeader,
     _: usize,
     _: *mut u64,
@@ -353,7 +363,7 @@ pub extern "win64" fn query_capsule_capabilities(
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn query_variable_info(
+pub extern "C" fn query_variable_info(
     _: u32,
     max_storage: *mut u64,
     remaining_storage: *mut u64,
@@ -367,13 +377,13 @@ pub extern "win64" fn query_variable_info(
     Status::SUCCESS
 }
 
-pub extern "win64" fn raise_tpl(_: Tpl) -> Tpl {
+pub extern "C" fn raise_tpl(_: Tpl) -> Tpl {
     0
 }
 
-pub extern "win64" fn restore_tpl(_: Tpl) {}
+pub extern "C" fn restore_tpl(_: Tpl) {}
 
-pub extern "win64" fn allocate_pages(
+pub extern "C" fn allocate_pages(
     allocate_type: AllocateType,
     memory_type: MemoryType,
     pages: usize,
@@ -396,11 +406,11 @@ pub extern "win64" fn allocate_pages(
     status
 }
 
-pub extern "win64" fn free_pages(address: PhysicalAddress, _: usize) -> Status {
+pub extern "C" fn free_pages(address: PhysicalAddress, _: usize) -> Status {
     ALLOCATOR.borrow_mut().free_pages(address)
 }
 
-pub extern "win64" fn get_memory_map(
+pub extern "C" fn get_memory_map(
     memory_map_size: *mut usize,
     out: *mut MemoryDescriptor,
     key: *mut usize,
@@ -448,7 +458,7 @@ pub extern "win64" fn get_memory_map(
     Status::SUCCESS
 }
 
-pub extern "win64" fn allocate_pool(
+pub extern "C" fn allocate_pool(
     memory_type: MemoryType,
     size: usize,
     address: *mut *mut c_void,
@@ -469,11 +479,11 @@ pub extern "win64" fn allocate_pool(
     status
 }
 
-pub extern "win64" fn free_pool(ptr: *mut c_void) -> Status {
+pub extern "C" fn free_pool(ptr: *mut c_void) -> Status {
     ALLOCATOR.borrow_mut().free_pages(ptr as u64)
 }
 
-pub extern "win64" fn create_event(
+pub extern "C" fn create_event(
     _: u32,
     _: Tpl,
     _: EventNotify,
@@ -483,23 +493,23 @@ pub extern "win64" fn create_event(
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn set_timer(_: Event, _: TimerDelay, _: u64) -> Status {
+pub extern "C" fn set_timer(_: Event, _: TimerDelay, _: u64) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn wait_for_event(_: usize, _: *mut Event, _: *mut usize) -> Status {
+pub extern "C" fn wait_for_event(_: usize, _: *mut Event, _: *mut usize) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn signal_event(_: Event) -> Status {
+pub extern "C" fn signal_event(_: Event) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn close_event(_: Event) -> Status {
+pub extern "C" fn close_event(_: Event) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn check_event(_: Event) -> Status {
+pub extern "C" fn check_event(_: Event) -> Status {
     Status::UNSUPPORTED
 }
 
@@ -512,7 +522,7 @@ const SHIM_LOCK_PROTOCOL_GUID: Guid = Guid::from_fields(
     &[0x3d, 0xd8, 0x10, 0xdd, 0x8b, 0x23],
 );
 
-pub extern "win64" fn install_protocol_interface(
+pub extern "C" fn install_protocol_interface(
     _: *mut Handle,
     guid: *mut Guid,
     _: InterfaceType,
@@ -525,7 +535,7 @@ pub extern "win64" fn install_protocol_interface(
     }
 }
 
-pub extern "win64" fn reinstall_protocol_interface(
+pub extern "C" fn reinstall_protocol_interface(
     _: Handle,
     _: *mut Guid,
     _: *mut c_void,
@@ -534,7 +544,7 @@ pub extern "win64" fn reinstall_protocol_interface(
     Status::NOT_FOUND
 }
 
-pub extern "win64" fn uninstall_protocol_interface(
+pub extern "C" fn uninstall_protocol_interface(
     _: Handle,
     _: *mut Guid,
     _: *mut c_void,
@@ -542,7 +552,7 @@ pub extern "win64" fn uninstall_protocol_interface(
     Status::NOT_FOUND
 }
 
-pub extern "win64" fn handle_protocol(
+pub extern "C" fn handle_protocol(
     handle: Handle,
     guid: *mut Guid,
     out: *mut *mut c_void,
@@ -550,7 +560,7 @@ pub extern "win64" fn handle_protocol(
     open_protocol(handle, guid, out, null_mut(), null_mut(), 0)
 }
 
-pub extern "win64" fn register_protocol_notify(
+pub extern "C" fn register_protocol_notify(
     _: *mut Guid,
     _: Event,
     _: *mut *mut c_void,
@@ -558,7 +568,7 @@ pub extern "win64" fn register_protocol_notify(
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn locate_handle(
+pub extern "C" fn locate_handle(
     _: LocateSearchType,
     guid: *mut Guid,
     _: *mut c_void,
@@ -593,7 +603,7 @@ pub extern "win64" fn locate_handle(
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn locate_device_path(
+pub extern "C" fn locate_device_path(
     _: *mut Guid,
     _: *mut *mut DevicePathProtocol,
     _: *mut *mut c_void,
@@ -601,11 +611,11 @@ pub extern "win64" fn locate_device_path(
     Status::NOT_FOUND
 }
 
-pub extern "win64" fn install_configuration_table(_: *mut Guid, _: *mut c_void) -> Status {
+pub extern "C" fn install_configuration_table(_: *mut Guid, _: *mut c_void) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn load_image(
+pub extern "C" fn load_image(
     _boot_policy: Boolean,
     parent_image_handle: Handle,
     device_path: *mut DevicePathProtocol,
@@ -665,7 +675,7 @@ pub extern "win64" fn load_image(
     Status::SUCCESS
 }
 
-pub extern "win64" fn start_image(
+pub extern "C" fn start_image(
     image_handle: Handle,
     _: *mut usize,
     _: *mut *mut Char16,
@@ -673,37 +683,37 @@ pub extern "win64" fn start_image(
     let wrapped_handle = image_handle as *const LoadedImageWrapper;
     let address = unsafe { (*wrapped_handle).entry_point };
     let ptr = address as *const ();
-    let code: extern "win64" fn(Handle, *mut efi::SystemTable) -> Status =
+    let code: extern "C" fn(Handle, *mut efi::SystemTable) -> Status =
         unsafe { core::mem::transmute(ptr) };
     (code)(image_handle, unsafe { &mut ST })
 }
 
-pub extern "win64" fn exit(_: Handle, _: Status, _: usize, _: *mut Char16) -> Status {
+pub extern "C" fn exit(_: Handle, _: Status, _: usize, _: *mut Char16) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn unload_image(_: Handle) -> Status {
+pub extern "C" fn unload_image(_: Handle) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn exit_boot_services(_: Handle, _: usize) -> Status {
+pub extern "C" fn exit_boot_services(_: Handle, _: usize) -> Status {
     Status::SUCCESS
 }
 
-pub extern "win64" fn get_next_monotonic_count(_: *mut u64) -> Status {
+pub extern "C" fn get_next_monotonic_count(_: *mut u64) -> Status {
     Status::DEVICE_ERROR
 }
 
-pub extern "win64" fn stall(microseconds: usize) -> Status {
+pub extern "C" fn stall(microseconds: usize) -> Status {
     crate::delay::udelay(microseconds as u64);
     Status::SUCCESS
 }
 
-pub extern "win64" fn set_watchdog_timer(_: usize, _: u64, _: usize, _: *mut Char16) -> Status {
+pub extern "C" fn set_watchdog_timer(_: usize, _: u64, _: usize, _: *mut Char16) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn connect_controller(
+pub extern "C" fn connect_controller(
     _: Handle,
     _: *mut Handle,
     _: *mut DevicePathProtocol,
@@ -712,11 +722,11 @@ pub extern "win64" fn connect_controller(
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn disconnect_controller(_: Handle, _: Handle, _: Handle) -> Status {
+pub extern "C" fn disconnect_controller(_: Handle, _: Handle, _: Handle) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn open_protocol(
+pub extern "C" fn open_protocol(
     handle: Handle,
     guid: *mut Guid,
     out: *mut *mut c_void,
@@ -779,11 +789,11 @@ pub extern "win64" fn open_protocol(
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn close_protocol(_: Handle, _: *mut Guid, _: Handle, _: Handle) -> Status {
+pub extern "C" fn close_protocol(_: Handle, _: *mut Guid, _: Handle, _: Handle) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn open_protocol_information(
+pub extern "C" fn open_protocol_information(
     _: Handle,
     _: *mut Guid,
     _: *mut *mut OpenProtocolInformationEntry,
@@ -792,7 +802,7 @@ pub extern "win64" fn open_protocol_information(
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn protocols_per_handle(
+pub extern "C" fn protocols_per_handle(
     _: Handle,
     _: *mut *mut *mut Guid,
     _: *mut usize,
@@ -800,7 +810,7 @@ pub extern "win64" fn protocols_per_handle(
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn locate_handle_buffer(
+pub extern "C" fn locate_handle_buffer(
     _: LocateSearchType,
     _: *mut Guid,
     _: *mut c_void,
@@ -810,11 +820,11 @@ pub extern "win64" fn locate_handle_buffer(
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn locate_protocol(_: *mut Guid, _: *mut c_void, _: *mut *mut c_void) -> Status {
+pub extern "C" fn locate_protocol(_: *mut Guid, _: *mut c_void, _: *mut *mut c_void) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn install_multiple_protocol_interfaces(
+pub extern "C" fn install_multiple_protocol_interfaces(
     _: *mut Handle,
     _: *mut c_void,
     _: *mut c_void,
@@ -822,7 +832,7 @@ pub extern "win64" fn install_multiple_protocol_interfaces(
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn uninstall_multiple_protocol_interfaces(
+pub extern "C" fn uninstall_multiple_protocol_interfaces(
     _: *mut Handle,
     _: *mut c_void,
     _: *mut c_void,
@@ -830,15 +840,15 @@ pub extern "win64" fn uninstall_multiple_protocol_interfaces(
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn calculate_crc32(_: *mut c_void, _: usize, _: *mut u32) -> Status {
+pub extern "C" fn calculate_crc32(_: *mut c_void, _: usize, _: *mut u32) -> Status {
     Status::UNSUPPORTED
 }
 
-pub extern "win64" fn copy_mem(_: *mut c_void, _: *mut c_void, _: usize) {}
+pub extern "C" fn copy_mem(_: *mut c_void, _: *mut c_void, _: usize) {}
 
-pub extern "win64" fn set_mem(_: *mut c_void, _: usize, _: u8) {}
+pub extern "C" fn set_mem(_: *mut c_void, _: usize, _: u8) {}
 
-pub extern "win64" fn create_event_ex(
+pub extern "C" fn create_event_ex(
     _: u32,
     _: Tpl,
     _: EventNotify,
@@ -849,7 +859,7 @@ pub extern "win64" fn create_event_ex(
     Status::UNSUPPORTED
 }
 
-extern "win64" fn image_unload(_: Handle) -> Status {
+extern "C" fn image_unload(_: Handle) -> Status {
     efi::Status::UNSUPPORTED
 }
 
@@ -1040,7 +1050,8 @@ pub fn efi_exec(
     loaded_size: u64,
     info: &dyn boot::Info,
     fs: &crate::fat::Filesystem,
-    block: *const crate::block::VirtioBlockDevice,
+    // block: *const crate::block::VirtioBlockDevice,
+    block: *const crate::block::NvmeBlockDevice,
 ) {
     let vendor_data = 0u32;
     let acpi_rsdp_ptr = info.rsdp_addr();
@@ -1098,7 +1109,7 @@ pub fn efi_exec(
     );
 
     let ptr = address as *const ();
-    let code: extern "win64" fn(Handle, *mut efi::SystemTable) -> Status =
+    let code: extern "C" fn(Handle, *mut efi::SystemTable) -> Status =
         unsafe { core::mem::transmute(ptr) };
     (code)((image as *const _) as Handle, &mut *st);
 }
