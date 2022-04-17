@@ -21,6 +21,8 @@
 
 use core::ffi::c_void;
 use cty::*;
+use cstr_core::CStr;
+use uuid::Uuid;
 
 use core::panic::PanicInfo;
 
@@ -199,6 +201,22 @@ fn main(info: &dyn boot::Info) -> ! {
     panic!("Unable to boot from any virtio-blk device")
 }
 
+#[derive(Debug)]
+pub enum Error {
+    BadArgs,
+}
+
+fn load_image(spec: &str) -> Result<(), Error> {
+    log!("Chainloading {}", spec);
+
+    let mut args = spec.split(';');
+
+    let uuid = Uuid::parse_str(args.next().ok_or(Error::BadArgs)?).or(Err(Error::BadArgs))?;
+    let path = args.next().ok_or(Error::BadArgs)?;
+
+    Ok(())
+}
+
 #[no_mangle]
 #[cfg(target_arch = "aarch64")]
 pub unsafe extern "C" fn rust_load_image(
@@ -206,5 +224,16 @@ pub unsafe extern "C" fn rust_load_image(
     image: *mut *mut c_void,
     size: *mut size_t,
 ) -> c_int {
-    0
+    let spec = unsafe { CStr::from_ptr(raw_spec).to_str().unwrap() };
+
+    match load_image(spec) {
+        Ok(()) => {
+            log!("Chainload succeeded");
+        },
+        Err(err) => {
+            log!("Chainload failed: {:?}", err);
+        }
+    }
+
+    -1
 }
