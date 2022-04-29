@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use alloc::boxed::Box;
 use core::ffi::c_void;
+use core::cmp::min;
 
 extern "C" {
     fn nvme_read(nsid: u32, lba: u64, buffer: *mut c_void) -> bool;
@@ -23,12 +25,14 @@ const SECTOR_SIZE: usize = 4096;
 #[repr(C, align(4096))]
 pub struct SectorBuffer([u8; SECTOR_SIZE]);
 
-pub struct NvmeBlockDevice<'a> {
+pub fn alloc_sector_buf() -> Box<SectorBuffer> {
+    let p: Box<SectorBuffer> = unsafe { Box::new_zeroed().assume_init() };
+    debug_assert_eq!(0, p.0.as_ptr().align_offset(4096));
+    p
+}
+
+pub struct NvmeBlockDevice {
     nsid: u32,
-    offset: u64,
-    lba: Option<u64>,
-    buf: &'a mut SectorBuffer,
-    pos: u64,
 }
 
 #[derive(Debug, PartialEq)]
@@ -51,14 +55,10 @@ pub trait SectorWrite {
     fn flush(&self) -> Result<(), Error>;
 }
 
-impl<'a> NvmeBlockDevice<'a> {
-    pub fn new(nsid: u32, offset: u64, buf: &'a mut SectorBuffer) -> NvmeBlockDevice {
+impl NvmeBlockDevice {
+    pub fn new(nsid: u32) -> NvmeBlockDevice {
         NvmeBlockDevice {
             nsid: nsid,
-            offset: offset,
-            lba: None,
-            buf: buf,
-            pos: 0,
         }
     }
 
@@ -67,34 +67,35 @@ impl<'a> NvmeBlockDevice<'a> {
     }
 }
 
-impl<'a> SectorRead for NvmeBlockDevice<'a> {
+impl SectorRead for NvmeBlockDevice {
+    // XXX: argument `sector` assume sector size 512. Assuming `data` is always 512.
     fn read(&self, sector: u64, data: &mut [u8]) -> Result<(), Error> {
-        /*
-        let mut read = 0;
-        while !buf.is_empty() {
-            let lba = self.pos / SECTOR_SIZE as u64;
-            let off = self.pos as usize % SECTOR_SIZE;
-
-            if Some(lba) != self.lba {
-                self.lba = Some(lba);
-                let lba = lba + self.offset;
-                if !unsafe { nvme_read(self.nsid, lba, self.buf.0.as_mut_ptr() as *mut c_void) } {
-                    log!("nvme_read({}, {}) failed", self.nsid, lba);
-                    return Err(Error::BlockIOError);
-                }
-            }
-            let copy_len = min(SECTOR_SIZE - off, buf.len());
-            buf[..copy_len].copy_from_slice(&self.buf.0[off..off + copy_len]);
-            buf = &mut buf[copy_len..];
-            read += copy_len;
-            self.pos += copy_len as u64;
+        if data.len() != 512 {
+            log!("data size other than {} is not supported", SECTOR_SIZE);
+            return Err(Error::BlockNotSupported);
         }
-        */
+        let mut buf = alloc_sector_buf();
+        //log!("allocated sector buf");
+        let lba = (sector * 512) / SECTOR_SIZE as u64;
+        let off = (sector as usize * 512) % SECTOR_SIZE;
+        log!("lba: {:#x}, off: {:#x}", lba, off);
+
+        if !unsafe { nvme_read(self.nsid, lba, buf.0.as_mut_ptr() as *mut c_void) } {
+            log!("nvme_read({}, {}) failed", self.nsid, lba);
+            return Err(Error::BlockIOError);
+        }
+        //log!("buf[..512]: {:?}", &buf.0[..512]);
+        //let copy_len = min(SECTOR_SIZE - off, data.len());
+        //log!("copy_len: {}", copy_len);
+        //data[..SECTOR_SIZE].copy_from_slice(&buf.0);
+        data[..512].copy_from_slice(&buf.0[off..off + 512]);
+        //log!("copied to data[..copy_len]");
+        //log!("read data: {:?}", data);
         Ok(())
     }
 }
 
-impl<'a> SectorWrite for NvmeBlockDevice<'a> {
+impl SectorWrite for NvmeBlockDevice {
     fn write(&self, sector: u64, data: &mut [u8]) -> Result<(), Error> {
         Err(Error::BlockIOError)
     }

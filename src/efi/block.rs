@@ -87,10 +87,10 @@ pub struct BlockIoProtocol {
 }
 
 #[repr(C)]
-pub struct BlockWrapper<'a> {
+pub struct BlockWrapper {
     hw: super::HandleWrapper,
     // block: *const crate::block::VirtioBlockDevice<'a>,
-    block: *const crate::block::NvmeBlockDevice<'a>,
+    block: *const crate::block::NvmeBlockDevice,
     media: BlockIoMedia,
     pub proto: BlockIoProtocol,
     // The ordering of these paths are very important, along with the C
@@ -100,8 +100,8 @@ pub struct BlockWrapper<'a> {
     start_lba: u64,
 }
 
-pub struct BlockWrappers<'a> {
-    pub wrappers: [*mut BlockWrapper<'a>; 16],
+pub struct BlockWrappers {
+    pub wrappers: [*mut BlockWrapper; 16],
     pub count: usize,
 }
 
@@ -176,7 +176,7 @@ pub extern "C" fn flush_blocks(proto: *mut BlockIoProtocol) -> Status {
     }
 }
 
-impl<'a> BlockWrapper<'a> {
+impl BlockWrapper {
     pub fn new(
         // block: *const crate::block::VirtioBlockDevice,
         block: *const crate::block::NvmeBlockDevice,

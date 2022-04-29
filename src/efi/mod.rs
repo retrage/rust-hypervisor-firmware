@@ -20,7 +20,7 @@ use core::{
 };
 
 use atomic_refcell::AtomicRefCell;
-use linked_list_allocator::LockedHeap;
+//use linked_list_allocator::LockedHeap;
 use r_efi::{
     efi::{
         self, AllocateType, Boolean, CapsuleHeader, Char16, Event, EventNotify, Guid, Handle,
@@ -42,7 +42,7 @@ mod console;
 mod file;
 mod var;
 
-use alloc::Allocator;
+use self::alloc::Allocator;
 use var::VariableAllocator;
 
 #[derive(Copy, Clone, PartialEq)]
@@ -61,15 +61,15 @@ struct HandleWrapper {
 
 pub static ALLOCATOR: AtomicRefCell<Allocator> = AtomicRefCell::new(Allocator::new());
 
-#[cfg(not(test))]
-#[global_allocator]
-pub static HEAP_ALLOCATOR: LockedHeap = LockedHeap::empty();
+//#[cfg(not(test))]
+//#[global_allocator]
+//pub static HEAP_ALLOCATOR: LockedHeap = LockedHeap::empty();
 
-#[cfg(not(test))]
-#[alloc_error_handler]
-fn heap_alloc_error_handler(layout: heap_alloc::Layout) -> ! {
-    panic!("heap allocation error: {:?}", layout);
-}
+//#[cfg(not(test))]
+//#[alloc_error_handler]
+//fn heap_alloc_error_handler(layout: heap_alloc::Layout) -> ! {
+//    panic!("heap allocation error: {:?}", layout);
+//}
 
 pub static VARIABLES: AtomicRefCell<VariableAllocator> =
     AtomicRefCell::new(VariableAllocator::new());
@@ -959,7 +959,7 @@ fn init_heap_allocator(size: usize) {
     );
     assert!(status == Status::SUCCESS);
     unsafe {
-        HEAP_ALLOCATOR.lock().init(heap_start as usize, size);
+        //HEAP_ALLOCATOR.lock().init(heap_start as usize, size);
     }
 }
 

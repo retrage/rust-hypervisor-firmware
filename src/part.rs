@@ -18,19 +18,50 @@ use crate::block::{Error as BlockError, SectorRead};
 /// GPT header
 struct Header {
     signature: u64,
-    _revision: u32,
-    _header_size: u32,
-    _header_crc: u32,
-    _reserved: u32,
-    _current_lba: u64,
-    _backup_lba: u64,
+    revision: u32,
+    header_size: u32,
+    header_crc: u32,
+    reserved: u32,
+    current_lba: u64,
+    backup_lba: u64,
     first_usable_lba: u64,
-    _last_usable_lba: u64,
-    _disk_guid: [u8; 16],
+    last_usable_lba: u64,
+    disk_guid: [u8; 16],
     first_part_lba: u64,
     part_count: u32,
-    _part_entry_size: u32,
-    _part_crc: u32,
+    part_entry_size: u32,
+    part_crc: u32,
+}
+
+fn dump_header(header: &Header) {
+    let signature = header.signature;
+    let revision = header.revision;
+    let header_size = header.header_size;
+    let header_crc = header.header_crc;
+    let reserved = header.reserved;
+    let current_lba = header.current_lba;
+    let backup_lba = header.backup_lba;
+    let first_usable_lba = header.first_usable_lba;
+    let last_usable_lba = header.last_usable_lba;
+    let disk_guid = header.disk_guid;
+    let first_part_lba = header.first_part_lba;
+    let part_count = header.part_count;
+    let part_entry_size = header.part_entry_size;
+    let part_crc = header.part_crc;
+    log!("signature: {:#x}", signature);
+    log!("revision: {:#x}", revision);
+    log!("header_size: {:#x}", header_size);
+    log!("header_crc: {:#x}", header_crc);
+    log!("reserved: {:#x}", reserved);
+    log!("current_lba: {:#x}", current_lba);
+    log!("backup_lba: {:#x}", backup_lba);
+    log!("first_usable_lba: {:#x}", first_usable_lba);
+    log!("last_usable_lba: {:#x}", last_usable_lba);
+    log!("disk_guid: {:?}", &disk_guid);
+    log!("first_part_lba: {:#x}", first_part_lba);
+    log!("part_count: {:#x}", part_count);
+    log!("part_entry_size: {:#x}", part_entry_size);
+    log!("part_crc: {:#x}", part_crc);
 }
 
 #[repr(packed)]
@@ -57,6 +88,10 @@ impl PartitionEntry {
                 0x00, 0xa0, 0xc9, 0x3e, 0xc9, 0x3b, // BE 00A0C93EC93B
             ]
     }
+    pub fn has_same_guid(&self, guid: &[u8; 16]) -> bool {
+        //log!("self.guid: {:?}, guid: {:?}", &self.guid, guid);
+        self.guid == *guid
+    }
 }
 
 #[derive(Debug)]
@@ -69,8 +104,9 @@ pub enum Error {
 }
 
 pub fn get_partitions(r: &dyn SectorRead, parts_out: &mut [PartitionEntry]) -> Result<u32, Error> {
-    let mut data: [u8; 512] = [0; 512];
-    match r.read(1, &mut data) {
+    const SECTOR_SIZE: usize = 4096;
+    let mut data = [0_u8; 512];
+    match r.read(SECTOR_SIZE as u64 / 512, &mut data) {
         Ok(_) => {}
         Err(e) => return Err(Error::Block(e)),
     };
@@ -78,24 +114,33 @@ pub fn get_partitions(r: &dyn SectorRead, parts_out: &mut [PartitionEntry]) -> R
     // Safe as sizeof header is less than 512 bytes (size of data)
     let h = unsafe { &*(data.as_ptr() as *const Header) };
 
+    log!("Partition Header signature: {:?}", &data[..8]);
+
     // GPT magic constant
     if h.signature != 0x5452_4150_2049_4645u64 {
         return Err(Error::HeaderNotFound);
     }
 
-    if h.first_usable_lba < 34 {
-        return Err(Error::ViolatesSpecification);
+    if h.first_usable_lba < 6 {
+        log!("[!] h.first_usable_lba < 6");
+        //return Err(Error::ViolatesSpecification);
     }
+
+    //dump_header(h);
 
     let part_count = h.part_count;
     let mut checked_part_count = 0;
 
     let first_usable_lba = h.first_usable_lba;
     let first_part_lba = h.first_part_lba;
+    log!("first_usable_lba: {}", first_usable_lba);
+    log!("first_part_lba: {}", first_part_lba);
 
     let mut current_part = 0u32;
 
     for lba in first_part_lba..first_usable_lba {
+        let lba = (SECTOR_SIZE as u64 * lba) / 512;
+        log!("modified lba: {}", lba);
         match r.read(lba, &mut data) {
             Ok(_) => {}
             Err(e) => return Err(Error::Block(e)),
@@ -109,6 +154,8 @@ pub fn get_partitions(r: &dyn SectorRead, parts_out: &mut [PartitionEntry]) -> R
             if p.guid == [0; 16] {
                 continue;
             }
+            let p_guid = p.guid;
+            log!("part entry guid: {:?}", p_guid);
             parts_out[current_part as usize] = *p;
             current_part += 1;
         }
@@ -131,6 +178,26 @@ pub fn find_efi_partition(r: &dyn SectorRead) -> Result<(u64, u64), Error> {
 
     for (checked_part_count, p) in (parts[0..part_count]).iter().enumerate() {
         if p.is_efi_partition() {
+            return Ok((p.first_lba, p.last_lba));
+        }
+        if checked_part_count == part_count {
+            return Err(Error::ExceededPartitionCount);
+        }
+    }
+
+    Err(Error::NoEFIPartition)
+}
+
+/// Find partition with specified GUID
+pub fn find_partition_with(r: &dyn SectorRead, guid: &[u8; 16]) -> Result<(u64, u64), Error> {
+    // Assume no more than 16 partitions on the disk
+    let mut parts: [PartitionEntry; 16] = unsafe { core::mem::zeroed() };
+
+    let part_count = get_partitions(r, &mut parts)? as usize;
+    log!("part_count: {}", part_count);
+
+    for (checked_part_count, p) in (parts[0..part_count]).iter().enumerate() {
+        if p.has_same_guid(guid) {
             return Ok((p.first_lba, p.last_lba));
         }
         if checked_part_count == part_count {

@@ -12,12 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#![feature(new_uninit)]
 #![feature(alloc_error_handler)]
 #![feature(stmt_expr_attributes)]
 #![cfg_attr(not(test), no_std)]
 // #![cfg_attr(not(test), no_main)]
 #![cfg_attr(test, allow(unused_imports, dead_code))]
 #![cfg_attr(not(feature = "log-serial"), allow(unused_variables, unused_imports))]
+
+#[macro_use]
+extern crate alloc;
 
 use core::ffi::c_void;
 use cty::*;
@@ -32,6 +36,7 @@ mod serial;
 #[macro_use]
 mod common;
 
+mod dlmalloc;
 // #[cfg(not(test))]
 // mod asm;
 mod block;
@@ -201,11 +206,123 @@ fn main(info: &dyn boot::Info) -> ! {
     panic!("Unable to boot from any virtio-blk device")
 }
 
+use crate::dlmalloc::DLMalloc;
+
+#[global_allocator]
+static GLOBAL: DLMalloc = dlmalloc::DLMalloc;
+
+#[alloc_error_handler]
+fn alloc_error(layout: core::alloc::Layout) -> ! {
+    panic!("memory allocation of {} bytes failed", layout.size())
+}
+
+#[derive(Debug)]
+pub enum Error {
+    Debugging,
+    BadArgs,
+    Unsupported,
+    Block(block::Error),
+    Partition(part::Error),
+    FileSystem(fat::Error),
+    Pe(pe::Error),
+}
+
+use crate::block::SectorRead;
+
+#[cfg(target_arch = "aarch64")]
+fn boot_from_var(var: &str) -> Result<(), Error> {
+    let mut args = var.split(',');
+
+    let chosen = args.next().ok_or(Error::BadArgs)?;
+    if !chosen.starts_with("chosen") {
+        return Err(Error::Unsupported);
+    }
+    let param = args.next().ok_or(Error::BadArgs)?;
+    let mut pargs = param.split('=');
+    let pkey = pargs.next().ok_or(Error::BadArgs)?;
+    let pval = pargs.next().ok_or(Error::BadArgs)?;
+
+    if pkey != "efi-system-partition" {
+        return Err(Error::Unsupported);
+    }
+    let uuid = Uuid::parse_str(pval).or(Err(Error::BadArgs))?;
+    log!("Searching partition with UUID {}", &uuid);
+
+    let storage = block::NvmeBlockDevice::new(1);
+    log!("Created NVMe storage");
+
+    /*
+    let mut data = [0_u8; 512];
+    storage.read(0, &mut data).map_err(Error::Block)?;
+    log!("sector 0: {:?}", &data);
+    */
+
+    let (start, end) = match part::find_partition_with(&storage, &[30, 57, 30, 181, 43, 239, 58, 66, 150, 174, 132, 15, 27, 180, 68, 54]) {
+        Ok(p) => p,
+        Err(err) => {
+            log!("Failed to find partition: {:?}", err);
+            return Err(Error::Partition(err));
+        }
+    };
+    log!("Found partition with UUID {}: {:#x}-{:#x}", &uuid, start, end);
+
+    let mut f = fat::Filesystem::new(&storage, start, end);
+    if let Err(err) = f.init() {
+        log!("Failed to create filesystem: {:?}", err);
+        return Err(Error::FileSystem(err));
+    }
+    log!("Filesystem ready");
+
+    log!("Using EFI boot.");
+    let mut file = match f.open("/EFI/BOOT/BOOTAARCH64 EFI") {
+        Ok(file) => file,
+        Err(err) => {
+            log!("Failed to load default EFI binary: {:?}", err);
+            return Err(Error::FileSystem(err));
+        }
+    };
+    log!("Found bootloader (BOOTAARCH64.EFI)");
+
+    Err(Error::Debugging)
+
+    /*
+    let mut l = pe::Loader::new(&mut file);
+    let load_addr = 0x20_0000; // FIXME
+    let (entry_addr, load_addr, size) = match l.load(load_addr) {
+        Ok(load_info) => load_info,
+        Err(err) => {
+            log!("Error loading executable: {:?}", err);
+            return Err(Error::Pe(err));
+        }
+    };
+
+    log!("entry_addr: {:#x}, load_addr: {:#x}, size: {:#x}", entry_addr, load_addr, size);
+    log!("Executable loaded");
+    */
+    //efi::efi_exec(entry_addr, load_addr, size, info, &f, device);
+
+    //Ok(())
+}
+
 #[no_mangle]
 #[cfg(target_arch = "aarch64")]
 pub unsafe extern "C" fn rust_boot_image(
-    image: *mut *mut c_void,
-    size: *mut size_t,
+    vars: *const *const c_char,
+    var_cnt: size_t,
 ) -> c_int {
+    if var_cnt == 0 {
+        log!("No variable found");
+        return -1;
+    }
+
+    // TODO: Try all given variables
+    let var = CStr::from_ptr(*vars).to_str().unwrap();
+    log!("Booting with {}", var);
+    match boot_from_var(var) {
+        Ok(_) => {},
+        Err(e) => {
+            log!("Boot from variable error: {:?}", e);
+        }
+    }
     -1
 }
