@@ -890,21 +890,22 @@ fn extract_path(device_path: &DevicePathProtocol, path: &mut [u8]) {
 }
 
 extern "C" {
-    #[link_name = "ram_min"]
-    static RAM_MIN: c_void;
-    #[link_name = "text_start"]
+    //#[link_name = "_base"]
+    //static RAM_MIN: c_void;
+    #[link_name = "_text_start"]
     static TEXT_START: c_void;
-    #[link_name = "text_end"]
+    #[link_name = "_text_end"]
     static TEXT_END: c_void;
-    #[link_name = "stack_start"]
+    #[link_name = "_end"]
     static STACK_START: c_void;
 }
 
-const PAGE_SIZE: u64 = 4096;
+const PAGE_SIZE: u64 = 0x4000;
 const HEAP_SIZE: usize = 256 * 1024 * 1024;
 
 // Populate allocator from E820, fixed ranges for the firmware and the loaded binary.
-fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64) {
+fn populate_allocator(image_address: u64, image_size: u64) {
+    /*
     for i in 0..info.num_entries() {
         let entry = info.entry(i);
         if entry.entry_type == boot::E820Entry::RAM_TYPE {
@@ -916,23 +917,33 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
             );
         }
     }
+    */
 
-    let ram_min = unsafe { &RAM_MIN as *const _ as u64 };
+    //let ram_min = unsafe { &RAM_MIN as *const _ as u64 };
     let text_start = unsafe { &TEXT_START as *const _ as u64 };
     let text_end = unsafe { &TEXT_END as *const _ as u64 };
     let stack_start = unsafe { &STACK_START as *const _ as u64 };
+    //log!("ram_min: {:#x}", ram_min);
+    log!("text_start: {:#x}", text_start);
+    log!("text_end: {:#x}", text_end);
+    log!("stack_start: {:#x}", stack_start);
+    
+    /*
     assert!(ram_min % PAGE_SIZE == 0);
     assert!(text_start % PAGE_SIZE == 0);
     assert!(text_end % PAGE_SIZE == 0);
     assert!(stack_start % PAGE_SIZE == 0);
+    */
 
     // Add ourselves
+    /*
     ALLOCATOR.borrow_mut().allocate_pages(
         efi::ALLOCATE_ADDRESS,
         efi::RUNTIME_SERVICES_DATA,
         (text_start - ram_min) / PAGE_SIZE,
         ram_min,
     );
+    */
     ALLOCATOR.borrow_mut().allocate_pages(
         efi::ALLOCATE_ADDRESS,
         efi::RUNTIME_SERVICES_CODE,
@@ -955,7 +966,7 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
     );
 
     // Initialize heap allocator
-    init_heap_allocator(HEAP_SIZE);
+    //init_heap_allocator(HEAP_SIZE);
 }
 
 #[cfg(not(test))]
@@ -1106,6 +1117,8 @@ pub fn efi_exec(
         }
     };
 
+    log!("created EFI configuration table");
+
     let mut stdin = console::STDIN;
     let mut stdout = console::STDOUT;
     let mut st = unsafe { &mut ST };
@@ -1117,14 +1130,19 @@ pub fn efi_exec(
     st.number_of_table_entries = 1;
     st.configuration_table = &mut ct;
 
-    //populate_allocator(info, loaded_address, loaded_size);
+    log!("created EFI system table");
+
+    populate_allocator(loaded_address, loaded_size);
+    log!("populate_allocator succeeded");
 
     let efi_part_id = unsafe { block::populate_block_wrappers(&mut BLOCK_WRAPPERS, block) };
+    log!("efi_part_id: {:?}", efi_part_id);
 
+    /*
     let wrapped_fs = file::FileSystemWrapper::new(fs, efi_part_id);
 
     let image = new_image_handle(
-        "\\EFI\\BOOT\\BOOTX64.EFI",
+        "\\efi\\boot\\bootaarch64.efi",
         0 as Handle,
         &wrapped_fs as *const _ as Handle,
         loaded_address,
@@ -1132,8 +1150,11 @@ pub fn efi_exec(
         address,
     );
 
+    log!("craeted image handle");
+
     let ptr = address as *const ();
     let code: extern "C" fn(Handle, *mut efi::SystemTable) -> Status =
         unsafe { core::mem::transmute(ptr) };
     (code)((image as *const _) as Handle, &mut *st);
+    */
 }

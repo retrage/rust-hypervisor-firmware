@@ -245,6 +245,8 @@ impl<'a> Loader<'a> {
                     let location = u64::from(page_rva + u32::from(entry_offset));
                     let value = loaded_region.read_u64(location);
                     loaded_region.write_u64(location, (value as i64 + base_diff) as u64);
+                } else if entry_type != 0 {
+                    log!("Unsupported reloc entry_type: {}", entry_type);
                 }
 
                 block_offset += 2;

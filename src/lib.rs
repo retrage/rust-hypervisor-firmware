@@ -284,8 +284,8 @@ fn boot_from_var(var: &str) -> Result<(), Error> {
     let mut load_region: Box::<PayloadBuffer> =  unsafe { Box::new_zeroed().assume_init() };
     let mut l = pe::Loader::new(&mut file);
     let load_addr = load_region.0.as_mut_ptr() as *mut c_void as u64;
-    log!("l: {:?}", &l);
-    log!("load_addr: {:#x}", load_addr);
+    //log!("l: {:?}", &l);
+    //log!("load_addr: {:#x}", load_addr);
     let (entry_addr, load_addr, size) = match l.load(load_addr) {
         Ok(load_info) => load_info,
         Err(err) => {
@@ -297,14 +297,12 @@ fn boot_from_var(var: &str) -> Result<(), Error> {
     log!("entry_addr: {:#x}, load_addr: {:#x}, size: {:#x}", entry_addr, load_addr, size);
     log!("Executable loaded");
 
-    Err(Error::Debugging)
-
-    /*
     // TODO: Create memory map info
     efi::efi_exec(entry_addr, load_addr, size, &f, &storage);
 
-    Ok(())
-    */
+    Err(Error::Debugging)
+
+    // Ok(())
 }
 
 #[no_mangle]
