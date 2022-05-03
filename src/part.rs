@@ -103,9 +103,8 @@ pub enum Error {
 }
 
 pub fn get_partitions(r: &dyn SectorRead, parts_out: &mut [PartitionEntry]) -> Result<u32, Error> {
-    const SECTOR_SIZE: usize = 4096;
-    let mut data = [0_u8; 512];
-    match r.read(SECTOR_SIZE as u64 / 512, &mut data) {
+    let mut data = [0_u8; crate::block::SECTOR_SIZE];
+    match r.read(1, &mut data) {
         Ok(_) => {}
         Err(e) => return Err(Error::Block(e)),
     };
@@ -138,8 +137,6 @@ pub fn get_partitions(r: &dyn SectorRead, parts_out: &mut [PartitionEntry]) -> R
     let mut current_part = 0u32;
 
     for lba in first_part_lba..first_usable_lba {
-        let lba = (SECTOR_SIZE as u64 * lba) / 512;
-        log!("modified lba: {}", lba);
         match r.read(lba, &mut data) {
             Ok(_) => {}
             Err(e) => return Err(Error::Block(e)),

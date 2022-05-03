@@ -270,14 +270,14 @@ impl<'a> Read for Node<'a> {
     fn get_size(&self) -> u32 {
         match self {
             Self::File(file) => file.get_size(),
-            Self::Directory(_) => 512_u32,
+            Self::Directory(_) => crate::block::SECTOR_SIZE as u32,
         }
     }
 }
 
 impl<'a> Directory<'a> {
     fn read_next(&mut self, data: &mut [u8]) -> Result<(), Error> {
-        assert_eq!(data.len(), 512);
+        assert_eq!(data.len(), crate::block::SECTOR_SIZE);
 
         let mut sector = if self.cluster.is_some() {
             if self.sector >= self.filesystem.sectors_per_cluster {
@@ -300,8 +300,7 @@ impl<'a> Directory<'a> {
         } else {
             self.sector
         };
-        sector = (sector * 4096) / 512;
-        log!("read_next sector: {:?}", sector);
+        //log!("read_next sector: {:?}", sector);
 
         match self.filesystem.read(u64::from(sector), data) {
             Ok(_) => {}
@@ -316,7 +315,7 @@ impl<'a> Directory<'a> {
 
     // Checks if there are any other entries.
     pub fn has_next(&mut self) -> Result<bool, Error> {
-        let mut data: [u8; 512] = [0; 512];
+        let mut data = [0_u8; crate::block::SECTOR_SIZE];
 
         match self.read_next(&mut data) {
             Ok(_) => {}
@@ -326,7 +325,7 @@ impl<'a> Directory<'a> {
         };
 
         let dirs: &[FatDirectory] =
-            unsafe { core::slice::from_raw_parts(data.as_ptr() as *const FatDirectory, 512 / 32) };
+            unsafe { core::slice::from_raw_parts(data.as_ptr() as *const FatDirectory, crate::block::SECTOR_SIZE / 32) };
 
         let d = &dirs[self.offset];
 
@@ -342,7 +341,7 @@ impl<'a> Directory<'a> {
     pub fn next_entry(&mut self) -> Result<DirectoryEntry, Error> {
         let mut long_entry = [0u16; 260];
         loop {
-            let mut data: [u8; 512] = [0; 512];
+            let mut data = [0_u8; crate::block::SECTOR_SIZE];
 
             match self.read_next(&mut data) {
                 Ok(_) => {}
@@ -353,11 +352,11 @@ impl<'a> Directory<'a> {
             };
 
             let dirs: &[FatDirectory] = unsafe {
-                core::slice::from_raw_parts(data.as_ptr() as *const FatDirectory, 512 / 32)
+                core::slice::from_raw_parts(data.as_ptr() as *const FatDirectory, crate::block::SECTOR_SIZE / 32)
             };
 
             let lfns: &[FatLongNameEntry] = unsafe {
-                core::slice::from_raw_parts(data.as_ptr() as *const FatLongNameEntry, 512 / 32)
+                core::slice::from_raw_parts(data.as_ptr() as *const FatLongNameEntry, crate::block::SECTOR_SIZE / 32)
             };
 
             for i in self.offset..dirs.len() {
@@ -455,7 +454,7 @@ pub trait Read {
 
     // Loads the remainder of the file into the specified memory region
     fn load_file(&mut self, mem: &mut MemoryRegion) -> Result<(), Error> {
-        let mut chunks = mem.as_bytes().chunks_exact_mut(512);
+        let mut chunks = mem.as_bytes().chunks_exact_mut(crate::block::SECTOR_SIZE);
         for chunk in chunks.by_ref() {
             self.read(chunk)?;
         }
@@ -464,7 +463,7 @@ pub trait Read {
             return Ok(());
         }
         // Use tmp buffer for last, partial sector
-        let mut dst = [0; 512];
+        let mut dst = [0_u8; crate::block::SECTOR_SIZE];
         let bytes = self.read(&mut dst)? as usize;
         assert_eq!(bytes, last.len());
         last.copy_from_slice(&dst[..bytes]);
@@ -474,7 +473,7 @@ pub trait Read {
 
 impl<'a> Read for File<'a> {
     fn read(&mut self, data: &mut [u8]) -> Result<u32, Error> {
-        assert_eq!(data.len(), 512);
+        assert_eq!(data.len(), crate::block::SECTOR_SIZE);
 
         if self.position >= self.size {
             return Err(Error::EndOfFile);
@@ -501,20 +500,20 @@ impl<'a> Read for File<'a> {
             Err(e) => Err(Error::Block(e)),
             Ok(()) => {
                 self.sector_offset += 1;
-                if (self.position + 512) > self.size {
+                if (self.position + crate::block::SECTOR_SIZE as u32) > self.size {
                     let bytes_read = self.size - self.position;
                     self.position = self.size;
                     Ok(bytes_read)
                 } else {
-                    self.position += 512;
-                    Ok(512)
+                    self.position += crate::block::SECTOR_SIZE as u32;
+                    Ok(crate::block::SECTOR_SIZE as u32)
                 }
             }
         }
     }
 
     fn seek(&mut self, position: u32) -> Result<(), Error> {
-        if position % 512 != 0 {
+        if position % crate::block::SECTOR_SIZE as u32 != 0 {
             return Err(Error::InvalidOffset);
         }
 
@@ -544,7 +543,7 @@ impl<'a> Read for File<'a> {
             }
 
             self.sector_offset += 1;
-            self.position += 512;
+            self.position += crate::block::SECTOR_SIZE as u32;
         }
 
         Ok(())
@@ -556,7 +555,7 @@ impl<'a> Read for File<'a> {
 
 impl<'a> SectorRead for Filesystem<'a> {
     fn read(&self, sector: u64, data: &mut [u8]) -> Result<(), crate::block::Error> {
-        log!("SectorRead::read({:?}) for Filesystem<'a>", sector);
+        // log!("SectorRead::read({:?}) for Filesystem<'a>", sector);
         if self.start + sector > self.last {
             Err(crate::block::Error::BlockIOError)
         } else {
@@ -608,6 +607,9 @@ fn compare_short_name(name: &str, de: &DirectoryEntry) -> bool {
 }
 
 fn compare_name(name: &str, de: &DirectoryEntry) -> bool {
+    // log!("compare_name: name: {}, de.name: {:?}, de.long_name: {:?}", name, de.name, de.long_name);
+    // let has_same_short_name = compare_short_name(name, de);
+    // log!("compare_short_name: {}", has_same_short_name);
     compare_short_name(name, de)
         || (&de.long_name[0..name.len()] == name.as_bytes() && de.long_name[name.len()] == 0)
 }
@@ -638,7 +640,7 @@ impl<'a> Filesystem<'a> {
         const FAT12_MAX: u32 = 0xff5;
         const FAT16_MAX: u32 = 0xfff5;
 
-        let mut data: [u8; 512] = [0; 512];
+        let mut data = [0_u8; crate::block::SECTOR_SIZE];
         match self.read(0, &mut data) {
             Ok(_) => {}
             Err(e) => return Err(Error::Block(e)),
@@ -652,7 +654,7 @@ impl<'a> Filesystem<'a> {
 
         // Determine root directory sectors
         self.root_dir_sectors = ((u32::from(h.root_dir_count * 32)) + self.bytes_per_sector - 1) / self.bytes_per_sector;
-        log!("root_dir_sectors: {:?}", self.root_dir_sectors);
+        //log!("root_dir_sectors: {:?}", self.root_dir_sectors);
 
         // Determine FAT size
         self.sectors_per_fat = if h.legacy_sectors_per_fat == 0 {
@@ -662,7 +664,7 @@ impl<'a> Filesystem<'a> {
         } else {
             u32::from(h.legacy_sectors_per_fat)
         };
-        log!("self.sectors_per_fat: {:?}", self.sectors_per_fat);
+        //log!("self.sectors_per_fat: {:?}", self.sectors_per_fat);
 
         // Determine total sectors
         self.sectors = if h.legacy_sectors == 0 {
@@ -671,13 +673,13 @@ impl<'a> Filesystem<'a> {
         } else {
             u32::from(h.legacy_sectors)
         };
-        log!("self.sectors: {:?}", self.sectors);
+        //log!("self.sectors: {:?}", self.sectors);
 
         let data_sectors = self.sectors - (u32::from(h.reserved_sectors) + self.fat_count * self.sectors_per_fat) + self.root_dir_sectors;
-        log!("data_sectors: {:?}", data_sectors);
+        //log!("data_sectors: {:?}", data_sectors);
 
         self.clusters = data_sectors / u32::from(h.sectors_per_cluster);
-        log!("self.clusters: {:?}", self.clusters);
+        //log!("self.clusters: {:?}", self.clusters);
 
         self.fat_type = if self.clusters < FAT12_MAX {
             FatType::FAT12
@@ -708,16 +710,16 @@ impl<'a> Filesystem<'a> {
                 let fat_sector = self.first_fat_sector + (fat_offset / self.bytes_per_sector);
                 let offset = fat_offset % self.bytes_per_sector;
 
-                let mut data: [u8; 512] = [0; 512];
+                let mut data = [0_u8; crate::block::SECTOR_SIZE];
                 match self.read(u64::from(fat_sector), &mut data) {
                     Ok(_) => {}
                     Err(e) => return Err(Error::Block(e)),
                 };
                 let lower_data = data[offset as usize] as u16;
-                let upper_data = if offset < 511 {
+                let upper_data = if offset < (crate::block::SECTOR_SIZE - 1) as u32 {
                     data[offset as usize + 1] as u16
                 } else {
-                    // read next sector to get upper byte if offset is 511
+                    // read next sector to get upper byte if offset is SECTOR_SIZE - 1
                     match self.read(u64::from(fat_sector) + 1, &mut data) {
                         Ok(_) => {}
                         Err(e) => return Err(Error::Block(e)),
@@ -739,13 +741,13 @@ impl<'a> Filesystem<'a> {
                 }
             }
             FatType::FAT16 => {
-                let fat: [u16; 512 / 2] = [0; 512 / 2];
+                let fat = [0_u16; crate::block::SECTOR_SIZE / 2];
 
                 let fat_offset = cluster * 2;
                 let fat_sector = self.first_fat_sector + (fat_offset / self.bytes_per_sector);
                 let offset = fat_offset % self.bytes_per_sector;
 
-                let data = unsafe { core::slice::from_raw_parts_mut(fat.as_ptr() as *mut u8, 512) };
+                let data = unsafe { core::slice::from_raw_parts_mut(fat.as_ptr() as *mut u8, crate::block::SECTOR_SIZE) };
                 match self.read(u64::from(fat_sector), data) {
                     Ok(_) => {}
                     Err(e) => return Err(Error::Block(e)),
@@ -760,13 +762,13 @@ impl<'a> Filesystem<'a> {
                 }
             }
             FatType::FAT32 => {
-                let fat: [u32; 512 / 4] = [0; 512 / 4];
+                let fat = [0_u32; crate::block::SECTOR_SIZE / 4];
 
                 let fat_offset = cluster * 4;
                 let fat_sector = self.first_fat_sector + (fat_offset / self.bytes_per_sector);
                 let offset = fat_offset % self.bytes_per_sector;
 
-                let data = unsafe { core::slice::from_raw_parts_mut(fat.as_ptr() as *mut u8, 512) };
+                let data = unsafe { core::slice::from_raw_parts_mut(fat.as_ptr() as *mut u8, crate::block::SECTOR_SIZE) };
 
                 match self.read(u64::from(fat_sector), data) {
                     Ok(_) => {}
@@ -838,6 +840,7 @@ impl<'a> Filesystem<'a> {
     }
 
     fn open_from(&self, from: &Directory, path: &str) -> Result<Node, Error> {
+        //log!("open_from path: {}", path);
         let len = crate::common::ascii_length(path);
         assert!(len < 256);
         let mut p = [0_u8; 256];
@@ -871,19 +874,25 @@ impl<'a> Filesystem<'a> {
                     sub
                 }
             };
+            //log!("sub: {}", sub);
 
             if sub.is_empty() {
+                //log!("sub is empty");
                 return Err(Error::NotFound);
             }
 
             loop {
                 match current_dir.next_entry() {
-                    Err(Error::EndOfFile) => return Err(Error::NotFound),
+                    Err(Error::EndOfFile) => {
+                        //log!("Reached EOF");
+                        return Err(Error::NotFound);
+                    },
                     Err(e) => {
-                        log!("current_dir.next_entry() failed: {:?}", &e);
+                        //log!("current_dir.next_entry() failed: {:?}", &e);
                         return Err(e)
                     },
                     Ok(de) => {
+                        //log!("Found de");
                         if compare_name(sub, &de) {
                             match de.file_type {
                                 FileType::Directory => {

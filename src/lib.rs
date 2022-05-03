@@ -226,6 +226,12 @@ pub enum Error {
     Pe(pe::Error),
 }
 
+
+#[repr(C, align(4096))]
+pub struct PayloadBuffer([u8; 4096 * 458]);
+
+use alloc::boxed::Box;
+
 #[cfg(target_arch = "aarch64")]
 fn boot_from_var(var: &str) -> Result<(), Error> {
     let mut args = var.split(',');
@@ -249,7 +255,7 @@ fn boot_from_var(var: &str) -> Result<(), Error> {
     log!("Created NVMe storage");
 
     let (start, end) = match part::find_partition_with(&storage, &uuid) {
-        Ok(p) => ((p.0 * 4096) / 512, (p.1 * 4096) / 512), // XXX: Fixup partition sector info for 512-byte sectors.
+        Ok(p) => p,
         Err(err) => {
             log!("Failed to find partition: {:?}", err);
             return Err(Error::Partition(err));
@@ -258,17 +264,15 @@ fn boot_from_var(var: &str) -> Result<(), Error> {
     log!("Found partition with UUID {}: {:#x}-{:#x}", &uuid, start, end);
 
     let mut f = fat::Filesystem::new(&storage, start, end);
-    // TODO: Check if FAT filesystem is ready
     if let Err(err) = f.init() {
         log!("Failed to create filesystem: {:?}", err);
         return Err(Error::FileSystem(err));
     }
     log!("Filesystem ready");
-    log!("f: {:?}", f);
+    // log!("f: {:?}", f);
 
-    // TODO: Fix BlockIoError
     log!("Using EFI boot.");
-    let mut file = match f.open("/EFI/BOOT/BOOTAARCH64 EFI") {
+    let mut file = match f.open("/efi/boot/bootaarch64.efi") {
         Ok(file) => file,
         Err(err) => {
             log!("Failed to load default EFI binary: {:?}", err);
@@ -277,10 +281,11 @@ fn boot_from_var(var: &str) -> Result<(), Error> {
     };
     log!("Found bootloader (BOOTAARCH64.EFI)");
 
-    //Err(Error::Debugging)
-
+    let mut load_region: Box::<PayloadBuffer> =  unsafe { Box::new_zeroed().assume_init() };
     let mut l = pe::Loader::new(&mut file);
-    let load_addr = 0x20_0000; // FIXME: Allocate heap
+    let load_addr = load_region.0.as_mut_ptr() as *mut c_void as u64;
+    log!("l: {:?}", &l);
+    log!("load_addr: {:#x}", load_addr);
     let (entry_addr, load_addr, size) = match l.load(load_addr) {
         Ok(load_info) => load_info,
         Err(err) => {
@@ -291,10 +296,15 @@ fn boot_from_var(var: &str) -> Result<(), Error> {
 
     log!("entry_addr: {:#x}, load_addr: {:#x}, size: {:#x}", entry_addr, load_addr, size);
     log!("Executable loaded");
+
+    Err(Error::Debugging)
+
+    /*
     // TODO: Create memory map info
     efi::efi_exec(entry_addr, load_addr, size, &f, &storage);
 
     Ok(())
+    */
 }
 
 #[no_mangle]

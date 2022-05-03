@@ -21,6 +21,12 @@ pub struct Loader<'a> {
     image_size: u32,
 }
 
+impl<'a> core::fmt::Debug for Loader<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Loader {{ num_sections: {:?}, image_base: {:?}, image_size: {:?} }}", self.num_sections, self.image_base, self.image_size)
+    }
+}
+
 #[derive(Debug)]
 pub enum Error {
     FileError,
@@ -48,16 +54,23 @@ impl<'a> Loader<'a> {
     }
 
     pub fn load(&mut self, load_addr: u64) -> Result<(u64, u64, u64), Error> {
-        let mut data: [u8; 1024] = [0; 1024];
+        let mut data = [0_u8; crate::block::SECTOR_SIZE];
 
-        match self.file.read(&mut data[0..512]) {
-            Ok(_) => {}
-            Err(_) => return Err(Error::FileError),
-        }
+        if crate::block::SECTOR_SIZE == 512 {
+            match self.file.read(&mut data[0..512]) {
+                Ok(_) => {}
+                Err(_) => return Err(Error::FileError),
+            }
 
-        match self.file.read(&mut data[512..]) {
-            Ok(_) => {}
-            Err(_) => return Err(Error::FileError),
+            match self.file.read(&mut data[512..]) {
+                Ok(_) => {}
+                Err(_) => return Err(Error::FileError),
+            }
+        } else if data.len() <= crate::block::SECTOR_SIZE {
+            match self.file.read(&mut data) {
+                Ok(_) => {},
+                Err(_) => return Err(Error::FileError),
+            }
         }
 
         let dos_region = MemoryRegion::from_bytes(&mut data);
@@ -70,7 +83,7 @@ impl<'a> Loader<'a> {
         // offset to COFF header
         let pe_header_offset = dos_region.read_u32(0x3c);
 
-        if pe_header_offset >= 512 {
+        if pe_header_offset >= crate::block::SECTOR_SIZE as u32 {
             return Err(Error::InvalidExecutable);
         }
 
@@ -84,7 +97,11 @@ impl<'a> Loader<'a> {
         }
 
         // Check for supported machine
-        if pe_region.read_u16(4) != 0x8664 {
+        #[cfg(target_arch = "x86_64")]
+        let machine_type = 0x8664;
+        #[cfg(target_arch = "aarch64")]
+        let machine_type = 0xaa64;
+        if pe_region.read_u16(4) != machine_type {
             return Err(Error::InvalidExecutable);
         }
 
@@ -94,7 +111,7 @@ impl<'a> Loader<'a> {
         let optional_region =
             MemoryRegion::from_bytes(&mut data[(24 + pe_header_offset) as usize..]);
 
-        // Only support x86-64 EFI
+        // Only support PE32+
         if optional_region.read_u16(0) != 0x20b {
             return Err(Error::InvalidExecutable);
         }
@@ -137,14 +154,14 @@ impl<'a> Loader<'a> {
         while header_offset < u64::from(size_of_headers) {
             match self
                 .file
-                .read(loaded_region.as_mut_slice(header_offset, 512))
+                .read(loaded_region.as_mut_slice(header_offset, crate::block::SECTOR_SIZE as u64))
             {
                 Ok(_) => {}
                 Err(_) => {
                     return Err(Error::FileError);
                 }
             }
-            header_offset += 512;
+            header_offset += crate::block::SECTOR_SIZE as u64;
         }
 
         for section in sections {
@@ -153,7 +170,7 @@ impl<'a> Loader<'a> {
             }
 
             // TODO: Handle strange offset sections.
-            if section.raw_offset % 512 != 0 {
+            if section.raw_offset % crate::block::SECTOR_SIZE as u32 != 0 {
                 continue;
             }
 
@@ -162,12 +179,12 @@ impl<'a> Loader<'a> {
                 Err(_) => return Err(Error::FileError),
             }
 
-            let mut section_data: [u8; 512] = [0; 512];
+            let mut section_data  = [0_u8; crate::block::SECTOR_SIZE];
 
             let mut section_offset = 0;
             let section_size = core::cmp::min(section.raw_size, section.virt_size);
             while section_offset < section_size {
-                let remaining_bytes = core::cmp::min(section_size - section_offset, 512);
+                let remaining_bytes = core::cmp::min(section_size - section_offset, crate::block::SECTOR_SIZE as u32);
                 match self.file.read(&mut section_data) {
                     Ok(_) => {}
                     Err(_) => {
@@ -198,7 +215,7 @@ impl<'a> Loader<'a> {
             return Ok(image_info);
         }
         for section in sections {
-            if section.virt_address == reloc_dir_virt_addr && section.raw_offset % 512 != 0 {
+            if section.virt_address == reloc_dir_virt_addr && section.raw_offset % crate::block::SECTOR_SIZE as u32 != 0 {
                 // This section is not loaded
                 return Ok(image_info);
             }
@@ -212,6 +229,7 @@ impl<'a> Loader<'a> {
 
         let mut section_bytes_remaining = section_size;
         let mut offset = 0;
+        // TODO: Fix relocations for aarch64
         while section_bytes_remaining > 0 {
             // Read details for block
             let page_rva = reloc_region.read_u32(offset);
