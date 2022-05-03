@@ -14,7 +14,6 @@
 
 use alloc::boxed::Box;
 use core::ffi::c_void;
-use core::cmp::min;
 
 extern "C" {
     fn nvme_read(nsid: u32, lba: u64, buffer: *mut c_void) -> bool;

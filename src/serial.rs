@@ -17,6 +17,7 @@
 
 use core::fmt;
 
+#[cfg(target_arch = "x86_64")]
 use atomic_refcell::AtomicRefCell;
 
 #[cfg(target_arch = "x86_64")]

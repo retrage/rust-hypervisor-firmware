@@ -14,40 +14,43 @@
 
 use crate::block::{Error as BlockError, SectorRead};
 
+use uuid::Uuid;
+
 #[repr(packed)]
 /// GPT header
 struct Header {
     signature: u64,
-    revision: u32,
-    header_size: u32,
-    header_crc: u32,
-    reserved: u32,
-    current_lba: u64,
-    backup_lba: u64,
+    _revision: u32,
+    _header_size: u32,
+    _header_crc: u32,
+    _reserved: u32,
+    _current_lba: u64,
+    _backup_lba: u64,
     first_usable_lba: u64,
-    last_usable_lba: u64,
-    disk_guid: [u8; 16],
+    _last_usable_lba: u64,
+    _disk_guid: [u8; 16],
     first_part_lba: u64,
     part_count: u32,
-    part_entry_size: u32,
-    part_crc: u32,
+    _part_entry_size: u32,
+    _part_crc: u32,
 }
 
+#[allow(dead_code)]
 fn dump_header(header: &Header) {
     let signature = header.signature;
-    let revision = header.revision;
-    let header_size = header.header_size;
-    let header_crc = header.header_crc;
-    let reserved = header.reserved;
-    let current_lba = header.current_lba;
-    let backup_lba = header.backup_lba;
+    let revision = header._revision;
+    let header_size = header._header_size;
+    let header_crc = header._header_crc;
+    let reserved = header._reserved;
+    let current_lba = header._current_lba;
+    let backup_lba = header._backup_lba;
     let first_usable_lba = header.first_usable_lba;
-    let last_usable_lba = header.last_usable_lba;
-    let disk_guid = header.disk_guid;
+    let last_usable_lba = header._last_usable_lba;
+    let disk_guid = header._disk_guid;
     let first_part_lba = header.first_part_lba;
     let part_count = header.part_count;
-    let part_entry_size = header.part_entry_size;
-    let part_crc = header.part_crc;
+    let part_entry_size = header._part_entry_size;
+    let part_crc = header._part_crc;
     log!("signature: {:#x}", signature);
     log!("revision: {:#x}", revision);
     log!("header_size: {:#x}", header_size);
@@ -87,10 +90,6 @@ impl PartitionEntry {
                 0xba, 0x4b, // BE BA4B
                 0x00, 0xa0, 0xc9, 0x3e, 0xc9, 0x3b, // BE 00A0C93EC93B
             ]
-    }
-    pub fn has_same_guid(&self, guid: &[u8; 16]) -> bool {
-        //log!("self.guid: {:?}, guid: {:?}", &self.guid, guid);
-        self.guid == *guid
     }
 }
 
@@ -189,7 +188,7 @@ pub fn find_efi_partition(r: &dyn SectorRead) -> Result<(u64, u64), Error> {
 }
 
 /// Find partition with specified GUID
-pub fn find_partition_with(r: &dyn SectorRead, guid: &[u8; 16]) -> Result<(u64, u64), Error> {
+  pub fn find_partition_with(r: &dyn SectorRead, guid: &Uuid) -> Result<(u64, u64), Error> {
     // Assume no more than 16 partitions on the disk
     let mut parts: [PartitionEntry; 16] = unsafe { core::mem::zeroed() };
 
@@ -197,7 +196,7 @@ pub fn find_partition_with(r: &dyn SectorRead, guid: &[u8; 16]) -> Result<(u64, 
     log!("part_count: {}", part_count);
 
     for (checked_part_count, p) in (parts[0..part_count]).iter().enumerate() {
-        if p.has_same_guid(guid) {
+        if Uuid::from_bytes_le(p.guid) == *guid {
             return Ok((p.first_lba, p.last_lba));
         }
         if checked_part_count == part_count {

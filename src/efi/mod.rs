@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use core::{
-    alloc as heap_alloc,
+    //alloc as heap_alloc,
     ffi::c_void,
     mem::{size_of, transmute},
     ptr::null_mut,
@@ -40,9 +40,11 @@ mod alloc;
 mod block;
 mod console;
 mod file;
+#[cfg(feature = "efi-var")]
 mod var;
 
 use self::alloc::Allocator;
+#[cfg(feature = "efi-var")]
 use var::VariableAllocator;
 
 #[derive(Copy, Clone, PartialEq)]
@@ -71,6 +73,7 @@ pub static ALLOCATOR: AtomicRefCell<Allocator> = AtomicRefCell::new(Allocator::n
 //    panic!("heap allocation error: {:?}", layout);
 //}
 
+#[cfg(feature = "efi-var")]
 pub static VARIABLES: AtomicRefCell<VariableAllocator> =
     AtomicRefCell::new(VariableAllocator::new());
 
@@ -305,6 +308,7 @@ pub extern "C" fn get_variable(
     data_size: *mut usize,
     data: *mut c_void,
 ) -> Status {
+    #[cfg(feature = "efi-var")]
     if cfg!(feature = "efi-var") {
         VARIABLES
             .borrow_mut()
@@ -312,6 +316,8 @@ pub extern "C" fn get_variable(
     } else {
         Status::NOT_FOUND
     }
+    #[cfg(not(feature = "efi-var"))]
+    Status::NOT_FOUND
 }
 
 pub extern "C" fn get_next_variable_name(
@@ -329,6 +335,7 @@ pub extern "C" fn set_variable(
     data_size: usize,
     data: *mut c_void,
 ) -> Status {
+    #[cfg(feature = "efi-var")]
     if cfg!(feature = "efi-var") {
         VARIABLES
             .borrow_mut()
@@ -336,6 +343,8 @@ pub extern "C" fn set_variable(
     } else {
         Status::UNSUPPORTED
     }
+    #[cfg(not(feature = "efi-var"))]
+    Status::UNSUPPORTED
 }
 
 pub extern "C" fn get_next_high_mono_count(_: *mut u32) -> Status {
@@ -1048,13 +1057,16 @@ pub fn efi_exec(
     address: u64,
     loaded_address: u64,
     loaded_size: u64,
-    info: &dyn boot::Info,
+    //info: &dyn boot::Info,
     fs: &crate::fat::Filesystem,
     // block: *const crate::block::VirtioBlockDevice,
     block: *const crate::block::NvmeBlockDevice,
 ) {
     let vendor_data = 0u32;
-    let acpi_rsdp_ptr = info.rsdp_addr();
+    //let acpi_rsdp_ptr = info.rsdp_addr();
+    let acpi_rsdp_ptr = 0;
+    // TODO: Add DTB table() to the configuration table
+    let dtb_ptr = 0;
 
     let mut ct = if acpi_rsdp_ptr != 0 {
         efi::ConfigurationTable {
@@ -1067,6 +1079,18 @@ pub fn efi_exec(
                 &[0x00, 0x80, 0xc7, 0x3c, 0x88, 0x81],
             ),
             vendor_table: acpi_rsdp_ptr as u64 as *mut _,
+        }
+    } else if dtb_ptr != 0 {
+        efi::ConfigurationTable {
+            vendor_guid: Guid::from_fields(
+                0xb1b6_21d5,
+                0xf19c,
+                0x41a5,
+                0x83,
+                0x0b,
+                &[0xd9, 0x15, 0x2c, 0x69, 0xaa, 0xe0],
+            ),
+            vendor_table: dtb_ptr as u64 as *mut _,
         }
     } else {
         efi::ConfigurationTable {
@@ -1093,7 +1117,7 @@ pub fn efi_exec(
     st.number_of_table_entries = 1;
     st.configuration_table = &mut ct;
 
-    populate_allocator(info, loaded_address, loaded_size);
+    //populate_allocator(info, loaded_address, loaded_size);
 
     let efi_part_id = unsafe { block::populate_block_wrappers(&mut BLOCK_WRAPPERS, block) };
 

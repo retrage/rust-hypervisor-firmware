@@ -113,6 +113,27 @@ pub struct Filesystem<'a> {
     root_cluster: u32, // FAT32 only
 }
 
+impl<'a> core::fmt::Debug for Filesystem<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Filesystem {{ start: {:?}, last: {:?}, byte_per_sector: {:?}, sectors: {:?}, fat_type: {:?}, clusters: {:?}, sectors_per_fat: {:?}, sectors_per_cluster: {:?}, fat_count: {:?}, root_dir_sectors: {:?}, first_fat_sector: {:?}, first_data_sector: {:?}, data_sector_count: {:?}, data_cluster_count: {:?}, root_cluster: {:?} }}",
+    self.start,
+    self.last,
+    self.bytes_per_sector,
+    self.sectors,
+    self.fat_type,
+    self.clusters,
+    self.sectors_per_fat,
+    self.sectors_per_cluster,
+    self.fat_count,
+    self.root_dir_sectors,
+    self.first_data_sector,
+    self.first_data_sector,
+    self.data_sector_count,
+    self.data_cluster_count,
+    self.root_cluster)
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Error {
     Block(BlockError),
@@ -258,7 +279,7 @@ impl<'a> Directory<'a> {
     fn read_next(&mut self, data: &mut [u8]) -> Result<(), Error> {
         assert_eq!(data.len(), 512);
 
-        let sector = if self.cluster.is_some() {
+        let mut sector = if self.cluster.is_some() {
             if self.sector >= self.filesystem.sectors_per_cluster {
                 match self.filesystem.next_cluster(self.cluster.unwrap()) {
                     Ok(new_cluster) => {
@@ -267,6 +288,7 @@ impl<'a> Directory<'a> {
                         self.offset = 0;
                     }
                     Err(e) => {
+                        log!("read_next self.filesystem.next_cluster() failed: {:?}", &e);
                         return Err(e);
                     }
                 }
@@ -278,10 +300,15 @@ impl<'a> Directory<'a> {
         } else {
             self.sector
         };
+        sector = (sector * 4096) / 512;
+        log!("read_next sector: {:?}", sector);
 
         match self.filesystem.read(u64::from(sector), data) {
             Ok(_) => {}
-            Err(e) => return Err(Error::Block(e)),
+            Err(e) => {
+                log!("read_next self.filesystem.read({:?}) failed: {:?}", sector, &e);
+                return Err(Error::Block(e));
+            },
         };
 
         Ok(())
@@ -320,6 +347,7 @@ impl<'a> Directory<'a> {
             match self.read_next(&mut data) {
                 Ok(_) => {}
                 Err(e) => {
+                    log!("self.read_next() failed: {:?}", &e);
                     return Err(e);
                 }
             };
@@ -528,6 +556,7 @@ impl<'a> Read for File<'a> {
 
 impl<'a> SectorRead for Filesystem<'a> {
     fn read(&self, sector: u64, data: &mut [u8]) -> Result<(), crate::block::Error> {
+        log!("SectorRead::read({:?}) for Filesystem<'a>", sector);
         if self.start + sector > self.last {
             Err(crate::block::Error::BlockIOError)
         } else {
@@ -621,13 +650,34 @@ impl<'a> Filesystem<'a> {
         self.fat_count = u32::from(h.fat_count);
         self.sectors_per_cluster = u32::from(h.sectors_per_cluster);
 
+        // Determine root directory sectors
+        self.root_dir_sectors = ((u32::from(h.root_dir_count * 32)) + self.bytes_per_sector - 1) / self.bytes_per_sector;
+        log!("root_dir_sectors: {:?}", self.root_dir_sectors);
+
+        // Determine FAT size
+        self.sectors_per_fat = if h.legacy_sectors_per_fat == 0 {
+            // This is FAT32
+            let h32 = unsafe { &*(data.as_ptr() as *const Fat32Header) };
+            h32.sectors_per_fat
+        } else {
+            u32::from(h.legacy_sectors_per_fat)
+        };
+        log!("self.sectors_per_fat: {:?}", self.sectors_per_fat);
+
+        // Determine total sectors
         self.sectors = if h.legacy_sectors == 0 {
+            // This is FAT32
             h.sectors
         } else {
             u32::from(h.legacy_sectors)
         };
+        log!("self.sectors: {:?}", self.sectors);
 
-        self.clusters = self.sectors / u32::from(h.sectors_per_cluster);
+        let data_sectors = self.sectors - (u32::from(h.reserved_sectors) + self.fat_count * self.sectors_per_fat) + self.root_dir_sectors;
+        log!("data_sectors: {:?}", data_sectors);
+
+        self.clusters = data_sectors / u32::from(h.sectors_per_cluster);
+        log!("self.clusters: {:?}", self.clusters);
 
         self.fat_type = if self.clusters < FAT12_MAX {
             FatType::FAT12
@@ -639,16 +689,7 @@ impl<'a> Filesystem<'a> {
 
         if self.fat_type == FatType::FAT32 {
             let h32 = unsafe { &*(data.as_ptr() as *const Fat32Header) };
-            self.sectors_per_fat = h32.sectors_per_fat;
             self.root_cluster = h32.root_cluster;
-        } else {
-            self.sectors_per_fat = u32::from(h.legacy_sectors_per_fat);
-        }
-
-        if self.fat_type == FatType::FAT12 || self.fat_type == FatType::FAT16 {
-            self.root_dir_sectors = ((u32::from(h.root_dir_count * 32)) + self.bytes_per_sector
-                - 1)
-                / self.bytes_per_sector;
         }
 
         self.first_fat_sector = u32::from(h.reserved_sectors);
@@ -838,7 +879,10 @@ impl<'a> Filesystem<'a> {
             loop {
                 match current_dir.next_entry() {
                     Err(Error::EndOfFile) => return Err(Error::NotFound),
-                    Err(e) => return Err(e),
+                    Err(e) => {
+                        log!("current_dir.next_entry() failed: {:?}", &e);
+                        return Err(e)
+                    },
                     Ok(de) => {
                         if compare_name(sub, &de) {
                             match de.file_type {

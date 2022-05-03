@@ -20,10 +20,9 @@
 #![cfg_attr(test, allow(unused_imports, dead_code))]
 #![cfg_attr(not(feature = "log-serial"), allow(unused_variables, unused_imports))]
 
-#[macro_use]
 extern crate alloc;
 
-use core::ffi::c_void;
+//use core::ffi::c_void;
 use cty::*;
 use cstr_core::CStr;
 use uuid::Uuid;
@@ -41,7 +40,7 @@ mod dlmalloc;
 // mod asm;
 mod block;
 mod boot;
-mod bzimage;
+// mod bzimage;
 // mod coreboot;
 mod delay;
 mod efi;
@@ -49,7 +48,7 @@ mod fat;
 // mod gdt;
 // #[cfg(all(test, feature = "integration_tests"))]
 // mod integration;
-mod loader;
+// mod loader;
 mod mem;
 // mod paging;
 mod part;
@@ -227,8 +226,6 @@ pub enum Error {
     Pe(pe::Error),
 }
 
-use crate::block::SectorRead;
-
 #[cfg(target_arch = "aarch64")]
 fn boot_from_var(var: &str) -> Result<(), Error> {
     let mut args = var.split(',');
@@ -251,14 +248,8 @@ fn boot_from_var(var: &str) -> Result<(), Error> {
     let storage = block::NvmeBlockDevice::new(1);
     log!("Created NVMe storage");
 
-    /*
-    let mut data = [0_u8; 512];
-    storage.read(0, &mut data).map_err(Error::Block)?;
-    log!("sector 0: {:?}", &data);
-    */
-
-    let (start, end) = match part::find_partition_with(&storage, &[30, 57, 30, 181, 43, 239, 58, 66, 150, 174, 132, 15, 27, 180, 68, 54]) {
-        Ok(p) => p,
+    let (start, end) = match part::find_partition_with(&storage, &uuid) {
+        Ok(p) => ((p.0 * 4096) / 512, (p.1 * 4096) / 512), // XXX: Fixup partition sector info for 512-byte sectors.
         Err(err) => {
             log!("Failed to find partition: {:?}", err);
             return Err(Error::Partition(err));
@@ -267,12 +258,15 @@ fn boot_from_var(var: &str) -> Result<(), Error> {
     log!("Found partition with UUID {}: {:#x}-{:#x}", &uuid, start, end);
 
     let mut f = fat::Filesystem::new(&storage, start, end);
+    // TODO: Check if FAT filesystem is ready
     if let Err(err) = f.init() {
         log!("Failed to create filesystem: {:?}", err);
         return Err(Error::FileSystem(err));
     }
     log!("Filesystem ready");
+    log!("f: {:?}", f);
 
+    // TODO: Fix BlockIoError
     log!("Using EFI boot.");
     let mut file = match f.open("/EFI/BOOT/BOOTAARCH64 EFI") {
         Ok(file) => file,
@@ -283,11 +277,10 @@ fn boot_from_var(var: &str) -> Result<(), Error> {
     };
     log!("Found bootloader (BOOTAARCH64.EFI)");
 
-    Err(Error::Debugging)
+    //Err(Error::Debugging)
 
-    /*
     let mut l = pe::Loader::new(&mut file);
-    let load_addr = 0x20_0000; // FIXME
+    let load_addr = 0x20_0000; // FIXME: Allocate heap
     let (entry_addr, load_addr, size) = match l.load(load_addr) {
         Ok(load_info) => load_info,
         Err(err) => {
@@ -298,10 +291,10 @@ fn boot_from_var(var: &str) -> Result<(), Error> {
 
     log!("entry_addr: {:#x}, load_addr: {:#x}, size: {:#x}", entry_addr, load_addr, size);
     log!("Executable loaded");
-    */
-    //efi::efi_exec(entry_addr, load_addr, size, info, &f, device);
+    // TODO: Create memory map info
+    efi::efi_exec(entry_addr, load_addr, size, &f, &storage);
 
-    //Ok(())
+    Ok(())
 }
 
 #[no_mangle]
