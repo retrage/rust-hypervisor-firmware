@@ -273,6 +273,7 @@ pub struct FileSystemWrapper<'a> {
 
 impl<'a> FileSystemWrapper<'a> {
     fn create_file(&self, node: crate::fat::Node<'a>) -> Option<*mut FileWrapper> {
+        /*
         let size = core::mem::size_of::<FileWrapper>();
         let (status, new_address) = super::ALLOCATOR.borrow_mut().allocate_pages(
             efi::ALLOCATE_ANY_PAGES,
@@ -280,30 +281,26 @@ impl<'a> FileSystemWrapper<'a> {
             ((size + super::PAGE_SIZE as usize - 1) / super::PAGE_SIZE as usize) as u64,
             0_u64,
         );
+        */
+        use alloc::boxed::Box;
+        let mut fw: Box<FileWrapper> = unsafe { Box::new_zeroed().assume_init() };
 
-        if status == Status::SUCCESS {
-            let fw = new_address as *mut FileWrapper;
-            unsafe {
-                (*fw).fs = self.fs;
-                (*fw).fs_wrapper = self;
-                (*fw).node = node;
-                (*fw).proto.revision = r_efi::protocols::file::REVISION;
-                (*fw).proto.open = open;
-                (*fw).proto.close = close;
-                (*fw).proto.delete = delete;
-                (*fw).proto.read = read;
-                (*fw).proto.write = write;
-                (*fw).proto.get_position = get_position;
-                (*fw).proto.set_position = set_position;
-                (*fw).proto.get_info = get_info;
-                (*fw).proto.set_info = set_info;
-                (*fw).proto.flush = flush;
-            }
+        (*fw).fs = self.fs;
+        (*fw).fs_wrapper = self;
+        (*fw).node = node;
+        (*fw).proto.revision = r_efi::protocols::file::REVISION;
+        (*fw).proto.open = open;
+        (*fw).proto.close = close;
+        (*fw).proto.delete = delete;
+        (*fw).proto.read = read;
+        (*fw).proto.write = write;
+        (*fw).proto.get_position = get_position;
+        (*fw).proto.set_position = set_position;
+        (*fw).proto.get_info = get_info;
+        (*fw).proto.set_info = set_info;
+        (*fw).proto.flush = flush;
 
-            Some(fw)
-        } else {
-            None
-        }
+        Some(fw.as_mut())
     }
 
     pub fn new(

@@ -1003,14 +1003,19 @@ fn new_image_handle(
     load_size: u64,
     entry_addr: u64,
 ) -> *mut LoadedImageWrapper {
-    let mut file_paths = null_mut();
+    //let mut file_paths = null_mut();
+
+    use crate::alloc::boxed::Box;
+    let mut file_paths: Box<DevicePaths> = unsafe { Box::new_zeroed().assume_init() };
+    /*
     let status = allocate_pool(
         efi::LOADER_DATA,
         size_of::<DevicePaths>(),
         &mut file_paths as *mut *mut c_void,
     );
     assert!(status == Status::SUCCESS);
-    let file_paths = unsafe { &mut *(file_paths as *mut DevicePaths) };
+    */
+    // let file_paths = unsafe { &mut *(file_paths as *mut DevicePaths) };
     *file_paths = [
         file::FileDevicePathProtocol {
             device_path: DevicePathProtocol {
@@ -1032,6 +1037,7 @@ fn new_image_handle(
 
     crate::common::ascii_to_ucs2(path, &mut file_paths[0].filename);
 
+    /*
     let mut image = null_mut();
     allocate_pool(
         efi::LOADER_DATA,
@@ -1039,7 +1045,9 @@ fn new_image_handle(
         &mut image as *mut *mut c_void,
     );
     assert!(status == Status::SUCCESS);
-    let image = unsafe { &mut *(image as *mut LoadedImageWrapper) };
+    */
+    let mut image: Box<LoadedImageWrapper> = unsafe { Box::new_zeroed().assume_init() };
+    //let image = unsafe { &mut *(image as *mut LoadedImageWrapper) };
     *image = LoadedImageWrapper {
         hw: HandleWrapper {
             handle_type: HandleType::LoadedImage,
@@ -1061,7 +1069,7 @@ fn new_image_handle(
         },
         entry_point: entry_addr,
     };
-    image
+    image.as_mut()
 }
 
 pub fn efi_exec(
@@ -1138,7 +1146,6 @@ pub fn efi_exec(
     let efi_part_id = unsafe { block::populate_block_wrappers(&mut BLOCK_WRAPPERS, block) };
     log!("efi_part_id: {:?}", efi_part_id);
 
-    /*
     let wrapped_fs = file::FileSystemWrapper::new(fs, efi_part_id);
 
     let image = new_image_handle(
@@ -1156,5 +1163,4 @@ pub fn efi_exec(
     let code: extern "C" fn(Handle, *mut efi::SystemTable) -> Status =
         unsafe { core::mem::transmute(ptr) };
     (code)((image as *const _) as Handle, &mut *st);
-    */
 }

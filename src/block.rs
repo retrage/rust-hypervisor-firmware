@@ -75,7 +75,7 @@ impl SectorRead for NvmeBlockDevice {
             return Err(Error::BlockNotSupported);
         }
         let lba = sector;
-        let off = 0;
+        // let off = 0;
         // log!("lba: {:#x}, off: {:#x}", lba, off);
 
         let mut buf = alloc_sector_buf();

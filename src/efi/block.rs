@@ -187,6 +187,7 @@ impl BlockWrapper {
     ) -> *mut BlockWrapper {
         let last_block = unsafe { (*block).get_capacity() } - 1;
 
+        /*
         let size = core::mem::size_of::<BlockWrapper>();
         let (_status, new_address) = super::ALLOCATOR.borrow_mut().allocate_pages(
             efi::ALLOCATE_ANY_PAGES,
@@ -196,6 +197,10 @@ impl BlockWrapper {
         );
 
         let bw = new_address as *mut BlockWrapper;
+        */
+
+        use alloc::boxed::Box;
+        let mut bw: Box<BlockWrapper> = unsafe { Box::new_zeroed().assume_init() };
 
         unsafe {
             *bw = BlockWrapper {
@@ -295,7 +300,7 @@ impl BlockWrapper {
 
             (*bw).proto.media = &(*bw).media;
         }
-        bw
+        bw.as_mut()
     }
 }
 
