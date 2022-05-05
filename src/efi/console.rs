@@ -66,7 +66,8 @@ pub extern "C" fn stdout_output_string(
             }
             i += 1;
         }
-        let s = unsafe { core::str::from_utf8_unchecked(&output) };
+        // let s = unsafe { core::str::from_utf8_unchecked(&output) };
+        let s = crate::common::ascii_strip(&output);
         serial.write_str(s).unwrap();
         if string_end {
             break;

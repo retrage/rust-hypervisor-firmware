@@ -398,6 +398,11 @@ pub extern "C" fn allocate_pages(
     pages: usize,
     address: *mut PhysicalAddress,
 ) -> Status {
+    use crate::alloc::boxed::Box;
+    let p: Box<[u8; PAGE_SIZE as usize]> = unsafe { Box::new_zeroed().assume_init() }; // TODO: Allocate specified pages.
+    let new_address = p.as_ptr() as u64;
+    let status = Status::SUCCESS;
+    /*
     let (status, new_address) =
         ALLOCATOR
             .borrow_mut()
@@ -407,6 +412,7 @@ pub extern "C" fn allocate_pages(
                 pages as u64,
                 unsafe { *address } as u64,
             );
+    */
     if status == Status::SUCCESS {
         unsafe {
             *address = new_address;
@@ -416,7 +422,8 @@ pub extern "C" fn allocate_pages(
 }
 
 pub extern "C" fn free_pages(address: PhysicalAddress, _: usize) -> Status {
-    ALLOCATOR.borrow_mut().free_pages(address)
+    //ALLOCATOR.borrow_mut().free_pages(address)
+    Status::SUCCESS
 }
 
 pub extern "C" fn get_memory_map(
@@ -426,6 +433,7 @@ pub extern "C" fn get_memory_map(
     descriptor_size: *mut usize,
     descriptor_version: *mut u32,
 ) -> Status {
+    //log!("get_memory_map called");
     if memory_map_size.is_null() {
         return Status::INVALID_PARAMETER;
     }
@@ -463,6 +471,7 @@ pub extern "C" fn get_memory_map(
         *memory_map_size = map_size;
         *key = ALLOCATOR.borrow().get_map_key();
     }
+    log!("count: {}, map_size: {}", count, map_size);
 
     Status::SUCCESS
 }
@@ -472,6 +481,28 @@ pub extern "C" fn allocate_pool(
     size: usize,
     address: *mut *mut c_void,
 ) -> Status {
+    use crate::alloc::boxed::Box;
+    let p: Box<[u8; PAGE_SIZE as usize]> = unsafe { Box::new_zeroed().assume_init() }; // TODO: Allocate specified pages.
+    let new_address = p.as_ptr() as u64;
+    let status = Status::SUCCESS;
+    /*
+    let (status, new_address) =
+        ALLOCATOR
+            .borrow_mut()
+            .allocate_pages(
+                allocate_type,
+                memory_type,
+                pages as u64,
+                unsafe { *address } as u64,
+            );
+    */
+    if status == Status::SUCCESS {
+        unsafe {
+            *address = new_address as *mut c_void;
+        }
+    }
+    status
+    /*
     let (status, new_address) = ALLOCATOR.borrow_mut().allocate_pages(
         efi::ALLOCATE_ANY_PAGES,
         memory_type,
@@ -486,10 +517,12 @@ pub extern "C" fn allocate_pool(
     }
 
     status
+    */
 }
 
 pub extern "C" fn free_pool(ptr: *mut c_void) -> Status {
-    ALLOCATOR.borrow_mut().free_pages(ptr as u64)
+    // ALLOCATOR.borrow_mut().free_pages(ptr as u64)
+    Status::SUCCESS
 }
 
 pub extern "C" fn create_event(
@@ -898,6 +931,8 @@ extern "C" {
     static TEXT_END: c_void;
     #[link_name = "_end"]
     static STACK_START: c_void;
+    #[link_name = "_payload_end"]
+    static PAYLOAD_END: c_void;
 }
 
 const PAGE_SIZE: u64 = 0x4000;
@@ -918,15 +953,24 @@ fn populate_allocator(image_address: u64, image_size: u64) {
         }
     }
     */
+    let payload_end = unsafe { &PAYLOAD_END as *const _ as u64 };
+    let page_count = ((8 * 1024 * 1024 * 1024) - payload_end) / PAGE_SIZE as u64;
+    ALLOCATOR.borrow_mut().add_initial_allocation(
+        efi::CONVENTIONAL_MEMORY,
+        page_count,
+        payload_end,
+        efi::MEMORY_WB,
+    );
+    log!("payload_end: {:#}, page_count: {}", payload_end, page_count);
 
     //let ram_min = unsafe { &RAM_MIN as *const _ as u64 };
     let text_start = unsafe { &TEXT_START as *const _ as u64 };
     let text_end = unsafe { &TEXT_END as *const _ as u64 };
     let stack_start = unsafe { &STACK_START as *const _ as u64 };
     //log!("ram_min: {:#x}", ram_min);
-    log!("text_start: {:#x}", text_start);
-    log!("text_end: {:#x}", text_end);
-    log!("stack_start: {:#x}", stack_start);
+    //log!("text_start: {:#x}", text_start);
+    //log!("text_end: {:#x}", text_end);
+    //log!("stack_start: {:#x}", stack_start);
     
     /*
     assert!(ram_min % PAGE_SIZE == 0);
@@ -1125,7 +1169,7 @@ pub fn efi_exec(
         }
     };
 
-    log!("created EFI configuration table");
+    //log!("created EFI configuration table");
 
     let mut stdin = console::STDIN;
     let mut stdout = console::STDOUT;
@@ -1138,13 +1182,13 @@ pub fn efi_exec(
     st.number_of_table_entries = 1;
     st.configuration_table = &mut ct;
 
-    log!("created EFI system table");
+    //log!("created EFI system table");
 
     populate_allocator(loaded_address, loaded_size);
-    log!("populate_allocator succeeded");
+    //log!("populate_allocator succeeded");
 
     let efi_part_id = unsafe { block::populate_block_wrappers(&mut BLOCK_WRAPPERS, block) };
-    log!("efi_part_id: {:?}", efi_part_id);
+    //log!("efi_part_id: {:?}", efi_part_id);
 
     let wrapped_fs = file::FileSystemWrapper::new(fs, efi_part_id);
 
@@ -1157,7 +1201,7 @@ pub fn efi_exec(
         address,
     );
 
-    log!("craeted image handle");
+    //log!("craeted image handle");
 
     let ptr = address as *const ();
     let code: extern "C" fn(Handle, *mut efi::SystemTable) -> Status =

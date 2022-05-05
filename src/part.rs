@@ -112,7 +112,7 @@ pub fn get_partitions(r: &dyn SectorRead, parts_out: &mut [PartitionEntry]) -> R
     // Safe as sizeof header is less than 512 bytes (size of data)
     let h = unsafe { &*(data.as_ptr() as *const Header) };
 
-    log!("Partition Header signature: {:?}", &data[..8]);
+    //log!("Partition Header signature: {:?}", &data[..8]);
 
     // GPT magic constant
     if h.signature != 0x5452_4150_2049_4645u64 {
@@ -121,7 +121,7 @@ pub fn get_partitions(r: &dyn SectorRead, parts_out: &mut [PartitionEntry]) -> R
 
     if h.first_usable_lba < 6 {
         log!("[!] h.first_usable_lba < 6");
-        //return Err(Error::ViolatesSpecification);
+        return Err(Error::ViolatesSpecification);
     }
 
     //dump_header(h);
@@ -131,8 +131,8 @@ pub fn get_partitions(r: &dyn SectorRead, parts_out: &mut [PartitionEntry]) -> R
 
     let first_usable_lba = h.first_usable_lba;
     let first_part_lba = h.first_part_lba;
-    log!("first_usable_lba: {}", first_usable_lba);
-    log!("first_part_lba: {}", first_part_lba);
+    //log!("first_usable_lba: {}", first_usable_lba);
+    //log!("first_part_lba: {}", first_part_lba);
 
     let mut current_part = 0u32;
 
@@ -151,7 +151,7 @@ pub fn get_partitions(r: &dyn SectorRead, parts_out: &mut [PartitionEntry]) -> R
                 continue;
             }
             let p_guid = p.guid;
-            log!("part entry guid: {:?}", p_guid);
+            //log!("part entry guid: {:?}", p_guid);
             parts_out[current_part as usize] = *p;
             current_part += 1;
         }

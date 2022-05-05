@@ -119,12 +119,12 @@ pub extern "C" fn read_blocks(
     let wrapper = container_of!(proto, BlockWrapper, proto);
     let wrapper = unsafe { &*wrapper };
 
-    let blocks = (size / 512) as usize;
+    let blocks = (size / 4096) as usize;
     let mut region = crate::mem::MemoryRegion::new(buffer as u64, size as u64);
 
     for i in 0..blocks {
         use crate::block::SectorRead;
-        let data = region.as_mut_slice(i as u64 * 512, 512);
+        let data = region.as_mut_slice(i as u64 * 4096, 4096);
         let block = unsafe { &*wrapper.block };
         match block.read(wrapper.start_lba + start + i as u64, data) {
             Ok(()) => continue,
@@ -147,12 +147,12 @@ pub extern "C" fn write_blocks(
     let wrapper = container_of!(proto, BlockWrapper, proto);
     let wrapper = unsafe { &*wrapper };
 
-    let blocks = (size / 512) as usize;
+    let blocks = (size / 4096) as usize;
     let mut region = crate::mem::MemoryRegion::new(buffer as u64, size as u64);
 
     for i in 0..blocks {
         use crate::block::SectorWrite;
-        let data = region.as_mut_slice(i as u64 * 512, 512);
+        let data = region.as_mut_slice(i as u64 * 4096, 4096);
         let block = unsafe { &*wrapper.block };
         match block.write(wrapper.start_lba + start + i as u64, data) {
             Ok(()) => continue,
@@ -215,7 +215,7 @@ impl BlockWrapper {
                     logical_partition: false,
                     read_only: true,
                     write_caching: false,
-                    block_size: 512,
+                    block_size: 4096,
                     io_align: 0,
                     last_block,
                 },
