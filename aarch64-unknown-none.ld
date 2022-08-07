@@ -1,4 +1,4 @@
-ENTRY(rust64_start)
+ENTRY(aarch64_start)
 
 PHDRS
 {
@@ -6,7 +6,8 @@ PHDRS
   note PT_NOTE               ;
 }
 
-ram_min = 0x40080000;
+/* ram_min = 0x40000000; */
+ram_min = 0x40000000;
 
 SECTIONS
 {

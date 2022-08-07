@@ -15,36 +15,56 @@
 // Inspired by https://github.com/phil-opp/blog_os/blob/post-03/src/vga_buffer.rs
 // from Philipp Oppermann
 
-use core::fmt;
+use core::{fmt, ptr::write_volatile};
 
 use atomic_refcell::AtomicRefCell;
 #[cfg(target_arch = "x86_64")]
 use uart_16550::SerialPort;
-#[cfg(target_arch = "aarch64")]
-use uart_16550::MmioSerialPort;
 
 // We use COM1 as it is the standard first serial port.
 #[cfg(target_arch = "x86_64")]
 pub static PORT: AtomicRefCell<SerialPort> = AtomicRefCell::new(unsafe { SerialPort::new(0x3f8) });
 
-// #[cfg(target_arch = "aarch64")]
-// const SERIAL_PORT_BASE_ADDRESS: usize = 0x9000;
-// #[cfg(target_arch = "aarch64")]
-// pub static PORT: AtomicRefCell<MmioSerialPort> = AtomicRefCell::new(unsafe { MmioSerialPort::new(SERIAL_PORT_BASE_ADDRESS) });
+pub struct Aarch64SerialPort;
 
-// pub struct Serial;
-// impl fmt::Write for Serial {
-//     fn write_str(&mut self, s: &str) -> fmt::Result {
-//         PORT.borrow_mut().write_str(s)
-//     }
-// }
+impl Aarch64SerialPort {
+    pub const fn new() -> Self {
+        Self {}
+    }
+
+    pub fn send(&mut self, data: u8) {
+        const BASE_ADDR: *mut u8 = 0x0900_0000 as *mut u8;
+        unsafe {
+            write_volatile(BASE_ADDR, data);
+        }
+    }
+}
+
+impl fmt::Write for Aarch64SerialPort {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        for byte in s.bytes() {
+            self.send(byte);
+        }
+        Ok(())
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+pub static PORT: AtomicRefCell<Aarch64SerialPort> = AtomicRefCell::new(Aarch64SerialPort::new());
+
+pub struct Serial;
+impl fmt::Write for Serial {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        PORT.borrow_mut().write_str(s)
+    }
+}
 
 #[macro_export]
 macro_rules! log {
     ($($arg:tt)*) => {{
-        // use core::fmt::Write;
-        // #[cfg(all(feature = "log-serial", not(test)))]
-        // writeln!($crate::serial::Serial, $($arg)*).unwrap();
+        use core::fmt::Write;
+        #[cfg(all(feature = "log-serial", not(test)))]
+        writeln!($crate::serial::Serial, $($arg)*).unwrap();
         #[cfg(all(feature = "log-serial", test))]
         println!($($arg)*);
     }};

@@ -20,7 +20,7 @@
 #![cfg_attr(test, allow(unused_imports, dead_code))]
 #![cfg_attr(not(feature = "log-serial"), allow(unused_variables, unused_imports))]
 
-use core::panic::PanicInfo;
+use core::{panic::PanicInfo, ptr};
 
 #[cfg(target_arch = "x86_64")]
 use x86_64::{
@@ -34,7 +34,7 @@ mod serial;
 #[macro_use]
 mod common;
 
-#[cfg(all(target_arch = "x86_64", not(test)))]
+#[cfg(not(test))]
 mod asm;
 #[cfg(target_arch = "x86_64")]
 mod block;
@@ -197,7 +197,15 @@ pub extern "C" fn rust64_start() -> ! {
 }
 
 fn main() -> ! {
-    // log!("\nBooting...");
+    const UART0: *mut u8 = 0x0900_0000 as *mut u8;
+    let out_str = b"AArch64 Bare Metal";
+    for byte in out_str {
+        unsafe {
+            ptr::write_volatile(UART0, *byte);
+        }
+    }
+
+    log!("\nBooting...");
 
     /*
     #[cfg(target_arch = "x86_64")]
