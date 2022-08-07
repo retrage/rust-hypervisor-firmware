@@ -22,6 +22,7 @@
 
 use core::panic::PanicInfo;
 
+#[cfg(target_arch = "x86_64")]
 use x86_64::{
     instructions::hlt,
     registers::control::{Cr0, Cr0Flags, Cr4, Cr4Flags},
@@ -33,26 +34,42 @@ mod serial;
 #[macro_use]
 mod common;
 
-#[cfg(not(test))]
+#[cfg(all(target_arch = "x86_64", not(test)))]
 mod asm;
+#[cfg(target_arch = "x86_64")]
 mod block;
+#[cfg(target_arch = "x86_64")]
 mod boot;
+#[cfg(target_arch = "x86_64")]
 mod bzimage;
+#[cfg(target_arch = "x86_64")]
 mod coreboot;
+#[cfg(target_arch = "x86_64")]
 mod delay;
+#[cfg(target_arch = "x86_64")]
 mod efi;
+#[cfg(target_arch = "x86_64")]
 mod fat;
+#[cfg(target_arch = "x86_64")]
 mod gdt;
 #[cfg(all(test, feature = "integration_tests"))]
 mod integration;
+#[cfg(target_arch = "x86_64")]
 mod loader;
 mod mem;
+#[cfg(target_arch = "x86_64")]
 mod paging;
+#[cfg(target_arch = "x86_64")]
 mod part;
+#[cfg(target_arch = "x86_64")]
 mod pci;
+#[cfg(target_arch = "x86_64")]
 mod pe;
+#[cfg(target_arch = "x86_64")]
 mod pvh;
+#[cfg(target_arch = "x86_64")]
 mod rtc;
+#[cfg(target_arch = "x86_64")]
 mod virtio;
 
 #[cfg(all(not(test), feature = "log-panic"))]
@@ -60,6 +77,7 @@ mod virtio;
 fn panic(info: &PanicInfo) -> ! {
     log!("PANIC: {}", info);
     loop {
+        #[cfg(target_arch = "x86_64")]
         hlt()
     }
 }
@@ -71,6 +89,7 @@ fn panic(_: &PanicInfo) -> ! {
 }
 
 // Enable SSE2 for XMM registers (needed for EFI calling)
+#[cfg(target_arch = "x86_64")]
 fn enable_sse() {
     let mut cr0 = Cr0::read();
     cr0.remove(Cr0Flags::EMULATE_COPROCESSOR);
@@ -85,6 +104,7 @@ fn enable_sse() {
 const VIRTIO_PCI_VENDOR_ID: u16 = 0x1af4;
 const VIRTIO_PCI_BLOCK_DEVICE_ID: u16 = 0x1042;
 
+#[cfg(target_arch = "x86_64")]
 fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn boot::Info) -> bool {
     if let Err(err) = device.init() {
         log!("Error configuring block device: {:?}", err);
@@ -148,32 +168,42 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn boot::Info
 #[no_mangle]
 #[cfg(not(feature = "coreboot"))]
 pub extern "C" fn rust64_start(rdi: &pvh::StartInfo) -> ! {
-    serial::PORT.borrow_mut().init();
+    // serial::PORT.borrow_mut().init();
 
+    #[cfg(target_arch = "x86_64")]
     enable_sse();
+    #[cfg(target_arch = "x86_64")]
     paging::setup();
 
-    main(rdi)
+    // #[cfg(target_arch = "x86_64")]
+    main()
 }
 
 #[no_mangle]
 #[cfg(feature = "coreboot")]
 pub extern "C" fn rust64_start() -> ! {
-    serial::PORT.borrow_mut().init();
+    // serial::PORT.borrow_mut().init();
 
+    #[cfg(target_arch = "x86_64")]
     enable_sse();
+    #[cfg(target_arch = "x86_64")]
     paging::setup();
 
+    #[cfg(target_arch = "x86_64")]
     let info = coreboot::StartInfo::default();
 
-    main(&info)
+    // #[cfg(target_arch = "x86_64")]
+    main()
 }
 
-fn main(info: &dyn boot::Info) -> ! {
-    log!("\nBooting with {}", info.name());
+fn main() -> ! {
+    // log!("\nBooting...");
 
+    /*
+    #[cfg(target_arch = "x86_64")]
     pci::print_bus();
 
+    #[cfg(target_arch = "x86_64")]
     pci::with_devices(
         VIRTIO_PCI_VENDOR_ID,
         VIRTIO_PCI_BLOCK_DEVICE_ID,
@@ -183,6 +213,7 @@ fn main(info: &dyn boot::Info) -> ! {
             boot_from_device(&mut device, info)
         },
     );
+    */
 
     panic!("Unable to boot from any virtio-blk device")
 }

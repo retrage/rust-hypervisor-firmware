@@ -35,6 +35,7 @@ use r_efi::{
 };
 
 use crate::boot;
+#[cfg(target_arch = "x86_64")]
 use crate::rtc;
 
 mod alloc;
@@ -226,14 +227,21 @@ pub extern "win64" fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Sta
         return Status::INVALID_PARAMETER;
     }
 
+    #[cfg(target_arch = "x86_64")]
     let (year, month, day) = match rtc::read_date() {
         Ok((y, m, d)) => (y, m, d),
         Err(()) => return Status::DEVICE_ERROR,
     };
+    #[cfg(target_arch = "aarch64")]
+    let (year, month, day) = (0, 0, 0);
+
+    #[cfg(target_arch = "x86_64")]
     let (hour, minute, second) = match rtc::read_time() {
         Ok((h, m, s)) => (h, m, s),
         Err(()) => return Status::DEVICE_ERROR,
     };
+    #[cfg(target_arch = "aarch64")]
+    let (hour, minute, second) = (0, 0, 0);
 
     unsafe {
         (*time).year = 2000 + year as u16;
@@ -696,6 +704,7 @@ pub extern "win64" fn get_next_monotonic_count(_: *mut u64) -> Status {
 }
 
 pub extern "win64" fn stall(microseconds: usize) -> Status {
+    #[cfg(target_arch = "x86_64")]
     crate::delay::udelay(microseconds as u64);
     Status::SUCCESS
 }
