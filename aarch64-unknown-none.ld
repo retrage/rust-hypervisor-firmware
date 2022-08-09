@@ -6,8 +6,8 @@ PHDRS
   note PT_NOTE               ;
 }
 
-/* ram_min = 0x40000000; */
-ram_min = 0x40000000;
+/* For booting as a QEMU kernel image */
+ram_min = 0x40080000;
 
 SECTIONS
 {
@@ -20,11 +20,8 @@ SECTIONS
      later sections avoids emitting empty sections in the final binary.       */
   data_start = .;
   .rodata : { *(.rodata .rodata.*) } :ram
-  . = ALIGN(4K);
   text_start = .;
   .text   : { *(.text .text.*)     }
-  .text32 : { *(.text32)           }
-  . = ALIGN(4K);
   text_end = .;
   .data   : { *(.data .data.*)     }
   data_size = . - data_start;
@@ -37,10 +34,8 @@ SECTIONS
   }
 
   /* Our stack grows down and is page-aligned. TODO: Add stack guard pages. */
-  .stack (NOLOAD) : ALIGN(4K) { . += 128K; }
+  .stack (NOLOAD) : ALIGN(16) { . += 128K; }
   stack_start = .;
-  /* ram32.s only maps the first 2 MiB, and that must include the stack. */
-  /* ASSERT((. <= 2M), "Stack overflows initial identity-mapped memory region") */
 
   /* Strip symbols from the output binary (comment out to get symbols) */
   /DISCARD/ : {
