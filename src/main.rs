@@ -36,7 +36,6 @@ mod common;
 
 #[cfg(not(test))]
 mod asm;
-//#[cfg(target_arch = "x86_64")]
 mod block;
 #[cfg(target_arch = "x86_64")]
 mod boot;
@@ -48,7 +47,6 @@ mod coreboot;
 mod delay;
 #[cfg(target_arch = "x86_64")]
 mod efi;
-//#[cfg(target_arch = "x86_64")]
 mod fat;
 #[cfg(target_arch = "x86_64")]
 mod gdt;
@@ -59,17 +57,13 @@ mod loader;
 mod mem;
 #[cfg(target_arch = "x86_64")]
 mod paging;
-//#[cfg(target_arch = "x86_64")]
 mod part;
-//#[cfg(target_arch = "x86_64")]
 mod pci;
-//#[cfg(target_arch = "x86_64")]
 mod pe;
 #[cfg(target_arch = "x86_64")]
 mod pvh;
 #[cfg(target_arch = "x86_64")]
 mod rtc;
-//#[cfg(target_arch = "x86_64")]
 mod virtio;
 
 #[cfg(all(not(test), feature = "log-panic"))]
@@ -175,7 +169,6 @@ pub extern "C" fn rust64_start() -> ! {
     #[cfg(target_arch = "x86_64")]
     paging::setup();
 
-    // #[cfg(target_arch = "x86_64")]
     main()
 }
 
@@ -192,14 +185,12 @@ pub extern "C" fn rust64_start() -> ! {
     #[cfg(target_arch = "x86_64")]
     let info = coreboot::StartInfo::default();
 
-    // #[cfg(target_arch = "x86_64")]
     main()
 }
 
 fn main() -> ! {
     log!("\nBooting...");
 
-    //#[cfg(target_arch = "x86_64")]
     pci::print_bus();
 
     pci::with_devices(
