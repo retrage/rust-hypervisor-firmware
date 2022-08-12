@@ -13,6 +13,8 @@
 // limitations under the License.
 
 use atomic_refcell::AtomicRefCell;
+
+#[cfg(target_arch = "x86_64")]
 use x86_64::instructions::port::{PortReadOnly, PortWriteOnly};
 
 use crate::{
@@ -27,12 +29,19 @@ const INVALID_VENDOR_ID: u16 = 0xffff;
 
 static PCI_CONFIG: AtomicRefCell<PciConfig> = AtomicRefCell::new(PciConfig::new());
 
+#[cfg(target_arch = "x86_64")]
 struct PciConfig {
     address_port: PortWriteOnly<u32>,
     data_port: PortReadOnly<u32>,
 }
 
+#[cfg(target_arch = "aarch64")]
+struct PciConfig {
+    region: mem::MemoryRegion,
+}
+
 impl PciConfig {
+    #[cfg(target_arch = "x86_64")]
     const fn new() -> Self {
         // We use the legacy, port-based Configuration Access Mechanism (CAM).
         Self {
@@ -41,6 +50,15 @@ impl PciConfig {
         }
     }
 
+    #[cfg(target_arch = "aarch64")]
+    const fn new() -> Self {
+        // We use Enhanced Configuration Access Mechanism (ECAM).
+        Self {
+            region: mem::MemoryRegion::new(0x4010000000, 0x10000000)
+        }
+    }
+
+    #[cfg(target_arch = "x86_64")]
     fn read(&mut self, bus: u8, device: u8, func: u8, offset: u8) -> u32 {
         assert_eq!(offset % 4, 0);
         assert!(device < MAX_DEVICES);
@@ -58,6 +76,24 @@ impl PciConfig {
             self.address_port.write(addr);
             self.data_port.read()
         }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    fn read(&self, bus: u8, device: u8, func: u8, offset: u8) -> u32 {
+        assert_eq!(offset % 4, 0);
+        assert!(device < MAX_DEVICES);
+        assert!(func < MAX_FUNCTIONS);
+
+        // dev[bus][device][function]
+        let addr = PciConfig::get_addr(bus as u64, device as u64, func as u64);
+
+        self.region.io_read_u32(addr + u64::from(offset))
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    fn get_addr(bus: u64, device: u64, func: u64) -> u64 {
+        const ECAM_SIZE: u64 = 0x1000;
+        ECAM_SIZE * (func + device * MAX_FUNCTIONS as u64 + bus * (MAX_DEVICES as u64 * MAX_FUNCTIONS as u64))
     }
 }
 
