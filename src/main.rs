@@ -165,9 +165,10 @@ pub extern "C" fn rust64_start() -> ! {
     serial::PORT.borrow_mut().init();
 
     #[cfg(target_arch = "x86_64")]
-    enable_sse();
-    #[cfg(target_arch = "x86_64")]
-    paging::setup();
+    {
+        enable_sse();
+        paging::setup();
+    }
 
     main()
 }
@@ -178,9 +179,10 @@ pub extern "C" fn rust64_start() -> ! {
     serial::PORT.borrow_mut().init();
 
     #[cfg(target_arch = "x86_64")]
-    enable_sse();
-    #[cfg(target_arch = "x86_64")]
-    paging::setup();
+    {
+        enable_sse();
+        paging::setup();
+    }
 
     #[cfg(target_arch = "x86_64")]
     let info = coreboot::StartInfo::default();
