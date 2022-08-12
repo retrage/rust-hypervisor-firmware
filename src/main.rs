@@ -20,7 +20,7 @@
 #![cfg_attr(test, allow(unused_imports, dead_code))]
 #![cfg_attr(not(feature = "log-serial"), allow(unused_variables, unused_imports))]
 
-use core::{panic::PanicInfo, ptr::{self, read_volatile}};
+use core::panic::PanicInfo;
 
 #[cfg(target_arch = "x86_64")]
 use x86_64::{
@@ -165,27 +165,6 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, #[cfg(target_arch = "
     true
 }
 
-#[derive(Default)]
-#[repr(C)]
-struct ArmHvcArgs {
-    arg0: u32,
-    arg1: u32,
-    arg2: u32,
-    arg3: u32,
-    arg4: u32,
-    arg5: u32,
-    arg6: u32,
-    arg7: u32,
-}
-
-extern "C" {
-    fn hvc_call(args: *mut ArmHvcArgs);
-}
-
-extern "C" {
-    fn psci_call_hvc(arg0: u32, arg1: u32, arg2: u32, arg3: u32) -> u32;
-}
-
 #[no_mangle]
 #[cfg(not(feature = "coreboot"))]
 pub extern "C" fn rust64_start() -> ! {
@@ -215,49 +194,6 @@ pub extern "C" fn rust64_start() -> ! {
 
     // #[cfg(target_arch = "x86_64")]
     main()
-}
-
-fn psci_call(arg0: u32, arg1: u32, arg2: u32, arg3: u32) -> u32 {
-    let mut hvc_args = ArmHvcArgs {
-        arg0: arg0,
-        arg1: arg1,
-        arg2: arg2,
-        arg3: arg3,
-        ..Default::default()
-    };
-    unsafe {
-        hvc_call(&mut hvc_args);
-    }
-
-    hvc_args.arg0 as u32
-}
-
-fn get_psci_version() -> u32 {
-    const PSCI_VERSION: u32 = 0x84000000;
-    psci_call(PSCI_VERSION, 0, 0, 0)
-}
-
-fn get_psci_features(fid: u32) -> u32 {
-    const PSCI_FEATURES: u32 = 0x8400000a;
-    psci_call(PSCI_FEATURES, fid, 0, 0)
-}
-
-fn is_smccc_supported() -> bool {
-    let psci_version = get_psci_version();
-    log!("PSCI version: {:#x}", psci_version);
-    const PSCI_VERSION_1_0: u32 = 0x10000;
-    if psci_version < PSCI_VERSION_1_0 {
-        return false;
-    } else {
-        const SMCCC_VERSION: u32 = 0x80000000;
-        let smccc_version = get_psci_features(SMCCC_VERSION);
-        log!("SMCCC version: {:#x}", smccc_version);
-        if smccc_version != 0 {
-            return false;
-        } else {
-            return true;
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -311,10 +247,6 @@ impl PciConfig {
 
 fn main() -> ! {
     log!("\nBooting...");
-
-    if !is_smccc_supported() {
-        log!("This machine does not support SMCCC");
-    }
 
     /*
     const VIRT_MMIO_BASE: usize = 0xa000000;
