@@ -1,6 +1,6 @@
 .global aarch64_start
 .extern stack_start
-.section .text, "ax"
+.section .text.boot, "ax"
 
 aarch64_start:
   ldr x30, =stack_start
