@@ -199,10 +199,6 @@ pub extern "C" fn rust64_start() -> ! {
 fn main() -> ! {
     log!("\nBooting...");
 
-    // const DTB_ADDR: usize = 0x4000_0000;
-    // let dtb = unsafe { (DTB_ADDR as *const u8 as *const FtdHeader).as_ref().unwrap() };
-    // log!("{:?}", dtb);
-
     //#[cfg(target_arch = "x86_64")]
     pci::print_bus();
 
