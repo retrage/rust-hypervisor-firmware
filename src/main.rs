@@ -199,25 +199,6 @@ pub extern "C" fn rust64_start() -> ! {
 fn main() -> ! {
     log!("\nBooting...");
 
-    /*
-    const VIRT_MMIO_BASE: usize = 0xa000000;
-    let mut virt_mmio_base = VIRT_MMIO_BASE;
-    loop {
-        let virt_mmio = mem::MemoryRegion::new(virt_mmio_base as u64, 0x200);
-        if virt_mmio.io_read_u32(0x00) != 0x74726976 {
-            break;
-        }
-        log!("virt mmio: {:#x}", virt_mmio_base);
-        let device_version= virt_mmio.io_read_u32(0x04);
-        let device_id = virt_mmio.io_read_u32(0x08);
-        let vendor_id = virt_mmio.io_read_u32(0x0c);
-        log!("Device Version: {:#x}", device_version);
-        log!("Device ID: {:#x}", device_id);
-        log!("Vendor ID: {:#x}", vendor_id);
-        virt_mmio_base += 0x200;
-    }
-    */
-
     // const DTB_ADDR: usize = 0x4000_0000;
     // let dtb = unsafe { (DTB_ADDR as *const u8 as *const FtdHeader).as_ref().unwrap() };
     // log!("{:?}", dtb);
