@@ -15,7 +15,7 @@
 // Inspired by https://github.com/phil-opp/blog_os/blob/post-03/src/vga_buffer.rs
 // from Philipp Oppermann
 
-use core::{fmt, ptr::write_volatile};
+use core::fmt;
 
 use atomic_refcell::AtomicRefCell;
 #[cfg(target_arch = "x86_64")]
@@ -25,22 +25,26 @@ use uart_16550::SerialPort;
 #[cfg(target_arch = "x86_64")]
 pub static PORT: AtomicRefCell<SerialPort> = AtomicRefCell::new(unsafe { SerialPort::new(0x3f8) });
 
-pub struct Aarch64SerialPort;
+pub struct Pl011SerialPort;
 
-impl Aarch64SerialPort {
+impl Pl011SerialPort {
     pub const fn new() -> Self {
         Self {}
+    }
+
+    pub fn init(&mut self) {
+        // Do nothing
     }
 
     pub fn send(&mut self, data: u8) {
         const BASE_ADDR: *mut u8 = 0x0900_0000 as *mut u8;
         unsafe {
-            write_volatile(BASE_ADDR, data);
+            core::ptr::write_volatile(BASE_ADDR, data);
         }
     }
 }
 
-impl fmt::Write for Aarch64SerialPort {
+impl fmt::Write for Pl011SerialPort {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for byte in s.bytes() {
             self.send(byte);
@@ -50,7 +54,7 @@ impl fmt::Write for Aarch64SerialPort {
 }
 
 #[cfg(target_arch = "aarch64")]
-pub static PORT: AtomicRefCell<Aarch64SerialPort> = AtomicRefCell::new(Aarch64SerialPort::new());
+pub static PORT: AtomicRefCell<Pl011SerialPort> = AtomicRefCell::new(Pl011SerialPort::new());
 
 pub struct Serial;
 impl fmt::Write for Serial {

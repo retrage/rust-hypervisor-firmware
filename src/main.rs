@@ -162,7 +162,7 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, #[cfg(target_arch = "
 #[no_mangle]
 #[cfg(not(feature = "coreboot"))]
 pub extern "C" fn rust64_start() -> ! {
-    // serial::PORT.borrow_mut().init();
+    serial::PORT.borrow_mut().init();
 
     #[cfg(target_arch = "x86_64")]
     enable_sse();
@@ -175,7 +175,7 @@ pub extern "C" fn rust64_start() -> ! {
 #[no_mangle]
 #[cfg(feature = "coreboot")]
 pub extern "C" fn rust64_start() -> ! {
-    // serial::PORT.borrow_mut().init();
+    serial::PORT.borrow_mut().init();
 
     #[cfg(target_arch = "x86_64")]
     enable_sse();
