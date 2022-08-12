@@ -41,7 +41,10 @@ impl<'a> Loader<'a> {
     #[cfg(target_arch = "x86_64")]
     const MACHINE_TYPE: u16 = 0x8664;
 
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(target_arch = "aarch64")]
+    const MACHINE_TYPE: u16 = 0xaa64;
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     const OPTIONAL_HEADER_MAGIC: u16 = 0x20b; // PE32+
 
     pub fn new(file: &'a mut dyn crate::fat::Read) -> Loader {
