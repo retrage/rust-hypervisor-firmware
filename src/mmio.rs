@@ -9,7 +9,6 @@ use crate::{
 #[derive(Default, Debug)]
 pub struct VirtioMmioTransport {
     region: mem::MemoryRegion,
-    // config_generation: u32,
 }
 
 impl VirtioMmioTransport {
@@ -42,14 +41,6 @@ impl VirtioTransport for VirtioMmioTransport {
         return Err(VirtioError::UnsupportedDevice);
       }
 
-      let mut before = self.region.io_read_u32(0x0fc);
-      dbg!(before);
-      while before != self.region.io_read_u32(0x0fc) {
-        before = self.region.io_read_u32(0x0fc);
-        dbg!(before);
-      }
-      // self.config_generation = self.region.io_read_u32(0x0fc);
-
       Ok(())
     }
 
@@ -59,15 +50,14 @@ impl VirtioTransport for VirtioMmioTransport {
 
     fn set_status(&self, status: u32) {
       self.region.io_write_u32(0x070, status);
-      core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
     }
 
     fn add_status(&self, status: u32) {
-        self.set_status(self.get_status() | status);
+      self.set_status(self.get_status() | status);
     }
 
     fn reset(&self) {
-        self.set_status(0);
+      self.set_status(0);
     }
 
     fn get_features(&self) -> u64 {
@@ -96,17 +86,17 @@ impl VirtioTransport for VirtioMmioTransport {
 
     fn set_queue(&self, queue: u16) {
       // queue_select: 0x030
-      self.region.io_write_u16(0x030, queue);
+      self.region.io_write_u32(0x030, queue as u32);
     }
 
     fn get_queue_max_size(&self) -> u16 {
       // queue_max_size: 0x034
-      self.region.io_read_u16(0x034)
+      (self.region.io_read_u32(0x034) & 0xffff) as u16
     }
 
     fn set_queue_size(&self, queue_size: u16) {
       // queue_size: 0x038
-      self.region.io_write_u16(0x038, queue_size);
+      self.region.io_write_u32(0x038, queue_size as u32);
     }
 
     fn set_descriptors_address(&self, address: u64) {
@@ -137,14 +127,10 @@ impl VirtioTransport for VirtioMmioTransport {
 
     fn notify_queue(&self, queue: u16) {
       // queue_notify: 0x050
-      self.region.io_write_u16(0x050, queue);
+      self.region.io_write_u32(0x050, queue as u32);
     }
 
     fn read_device_config(&self, offset: u64) -> u32 {
-      // let config_generation = self.region.io_read_u32(0x0fc);
-      // if config_generation != self.config_generation {
-      //   self.config_generation = config_generation;
-      // }
       // config: 0x100+
       self.region.io_read_u32(0x100 + offset)
     }
