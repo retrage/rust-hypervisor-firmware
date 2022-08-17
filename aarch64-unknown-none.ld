@@ -1,10 +1,5 @@
 ENTRY(aarch64_header)
 
-PHDRS
-{
-  load PT_LOAD FLAGS(7);
-}
-
 /* For booting as a QEMU kernel image */
 ram_min = 0x40080000;
 
@@ -16,7 +11,7 @@ SECTIONS
   /* These sections are mapped into RAM from the file. Omitting :ram from
      later sections avoids emitting empty sections in the final binary.       */
   text_start = .;
-  .text.boot : { *(.text.boot) } : load
+  .text.boot : { *(.text.boot) }
   .text   : { *(.text .text.*)     }
   . = ALIGN(4K);
   text_end = .;
