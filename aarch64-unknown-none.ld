@@ -1,4 +1,9 @@
-ENTRY(aarch64_start)
+ENTRY(aarch64_header)
+
+PHDRS
+{
+  load PT_LOAD FLAGS(7);
+}
 
 /* For booting as a QEMU kernel image */
 ram_min = 0x40080000;
@@ -11,12 +16,13 @@ SECTIONS
   /* These sections are mapped into RAM from the file. Omitting :ram from
      later sections avoids emitting empty sections in the final binary.       */
   text_start = .;
-  .text.boot : { *(.text.boot) }
+  .text.boot : { *(.text.boot) } : load
   .text   : { *(.text .text.*)     }
+  . = ALIGN(4K);
   text_end = .;
   .data   : { *(.data .data.*)     }
-  .note : { *(.note) } :note :ram
-  .rodata : { *(.rodata .rodata.*) } :ram
+  .note : { *(.note) }
+  .rodata : { *(.rodata .rodata.*) }
 
   /* The BSS section isn't mapped from file data. It is just zeroed in RAM. */
   .bss : {
@@ -26,7 +32,7 @@ SECTIONS
   }
 
   /* Our stack grows down and is page-aligned. TODO: Add stack guard pages. */
-  .stack (NOLOAD) : ALIGN(16) { . += 128K; }
+  .stack (NOLOAD) : ALIGN(4K) { . += 128K; }
   stack_start = .;
 
   /* Strip symbols from the output binary (comment out to get symbols) */
