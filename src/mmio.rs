@@ -133,7 +133,6 @@ impl VirtioTransport for VirtioMmioTransport {
 
 #[derive(Default)]
 pub struct MmioDevice {
-    base_addr: usize,
     region: mem::MemoryRegion,
     vendor_id: u32,
     device_id: u32,
@@ -142,7 +141,6 @@ pub struct MmioDevice {
 impl MmioDevice {
     pub fn new(base_addr: usize) -> Self {
         Self {
-            base_addr,
             region: mem::MemoryRegion::new(base_addr as u64, VIRTIO_MMIO_SIZE as u64),
             ..Default::default()
         }
