@@ -161,40 +161,37 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, #[cfg(target_arch = "
 }
 
 #[no_mangle]
-#[cfg(not(feature = "coreboot"))]
-pub extern "C" fn rust64_start() -> ! {
+#[cfg(target_arch = "x86_64")]
+pub extern "C" fn rust64_start(#[cfg(not(feature = "coreboot"))] rdi: &pvh::StartInfo) -> ! {
     serial::PORT.borrow_mut().init();
 
-    #[cfg(target_arch = "x86_64")]
-    {
-        enable_sse();
-        paging::setup();
-    }
+    enable_sse();
+    paging::setup();
 
-    main()
+    #[cfg(not(feature = "coreboot"))]
+    let info = *rdi;
+
+    #[cfg(feature = "coreboot")]
+    let info = coreboot::StartInfo::default();
+
+    main(&info)
 }
 
 #[no_mangle]
-#[cfg(feature = "coreboot")]
-pub extern "C" fn rust64_start() -> ! {
+#[cfg(target_arch = "aarch64")]
+pub extern "C" fn rust64_start(x0: *const u8) -> ! {
     serial::PORT.borrow_mut().init();
 
-    #[cfg(target_arch = "x86_64")]
-    {
-        enable_sse();
-        paging::setup();
-    }
+    let info = fdt::StartInfo::new(x0);
 
-    #[cfg(target_arch = "x86_64")]
-    let info = coreboot::StartInfo::default();
-
-    main()
+    main(&info)
 }
 
-fn main() -> ! {
-    log!("\nBooting...");
+const VIRTIO_MMIO_VENDOR_ID: u32 = 0x554d4551;
+const VIRTIO_MMIO_BLOCK_DEVICE_ID: u32 = 0x2;
 
-    pci::print_bus();
+fn main(info: &dyn boot::Info) -> ! {
+    log!("\nBooting...");
 
     pci::with_devices(
         VIRTIO_PCI_VENDOR_ID,
