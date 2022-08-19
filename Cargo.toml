@@ -35,6 +35,9 @@ linked_list_allocator = "0.10.1"
 uart_16550 = "0.2.18"
 x86_64 = "0.14.10"
 
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+fdt-rs = { version = "0.4", default-features = false }
+
 [dev-dependencies]
 dirs = "4.0.0"
 rand = "0.8.5"
