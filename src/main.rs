@@ -195,7 +195,7 @@ const VIRTIO_MMIO_VENDOR_ID: u32 = 0x554d4551;
 const VIRTIO_MMIO_BLOCK_DEVICE_ID: u32 = 0x2;
 
 fn main(info: &dyn boot::Info) -> ! {
-    log!("\nBooting...");
+    log!("\nBooting with {}", info.name());
 
     mmio::with_devices(
         VIRTIO_MMIO_VENDOR_ID,
