@@ -14,6 +14,7 @@
 
 use r_efi::{
     efi::{Boolean, Char16, Event, Handle, Status},
+    eficall, eficall_abi,
     protocols::{
         simple_text_input::{InputKey, Protocol as SimpleTextInputProtocol},
         simple_text_output::{Mode as SimpleTextOutputMode, Protocol as SimpleTextOutputProtocol},
@@ -32,22 +33,29 @@ pub const STDERR_HANDLE: Handle = &HandleWrapper {
     handle_type: HandleType::None,
 } as *const _ as Handle;
 
-pub extern "win64" fn stdin_reset(_: *mut SimpleTextInputProtocol, _: Boolean) -> Status {
+eficall! {
+pub fn stdin_reset(_: *mut SimpleTextInputProtocol, _: Boolean) -> Status {
     Status::UNSUPPORTED
 }
+}
 
-pub extern "win64" fn stdin_read_key_stroke(
+eficall! {
+pub fn stdin_read_key_stroke(
     _: *mut SimpleTextInputProtocol,
     _: *mut InputKey,
 ) -> Status {
     Status::NOT_READY
 }
-
-pub extern "win64" fn stdout_reset(_: *mut SimpleTextOutputProtocol, _: Boolean) -> Status {
-    Status::SUCCESS
 }
 
-pub extern "win64" fn stdout_output_string(
+eficall! {
+pub fn stdout_reset(_: *mut SimpleTextOutputProtocol, _: Boolean) -> Status {
+    Status::SUCCESS
+}
+}
+
+eficall! {
+pub fn stdout_output_string(
     _: *mut SimpleTextOutputProtocol,
     message: *mut Char16,
 ) -> Status {
@@ -74,15 +82,19 @@ pub extern "win64" fn stdout_output_string(
     }
     Status::SUCCESS
 }
+}
 
-pub extern "win64" fn stdout_test_string(
+eficall! {
+pub fn stdout_test_string(
     _: *mut SimpleTextOutputProtocol,
     _: *mut Char16,
 ) -> Status {
     Status::SUCCESS
 }
+}
 
-pub extern "win64" fn stdout_query_mode(
+eficall! {
+pub fn stdout_query_mode(
     _: *mut SimpleTextOutputProtocol,
     mode: usize,
     columns: *mut usize,
@@ -98,34 +110,45 @@ pub extern "win64" fn stdout_query_mode(
         Status::UNSUPPORTED
     }
 }
+}
 
-pub extern "win64" fn stdout_set_mode(_: *mut SimpleTextOutputProtocol, mode: usize) -> Status {
+eficall! {
+pub fn stdout_set_mode(_: *mut SimpleTextOutputProtocol, mode: usize) -> Status {
     if mode == 0 {
         Status::SUCCESS
     } else {
         Status::UNSUPPORTED
     }
 }
+}
 
-pub extern "win64" fn stdout_set_attribute(_: *mut SimpleTextOutputProtocol, _: usize) -> Status {
+eficall! {
+pub fn stdout_set_attribute(_: *mut SimpleTextOutputProtocol, _: usize) -> Status {
     // Accept all attribute changes but ignore them
     Status::SUCCESS
 }
-
-pub extern "win64" fn stdout_clear_screen(_: *mut SimpleTextOutputProtocol) -> Status {
-    Status::UNSUPPORTED
 }
 
-pub extern "win64" fn stdout_set_cursor_position(
+eficall! {
+pub fn stdout_clear_screen(_: *mut SimpleTextOutputProtocol) -> Status {
+    Status::UNSUPPORTED
+}
+}
+
+eficall! {
+pub fn stdout_set_cursor_position(
     _: *mut SimpleTextOutputProtocol,
     _: usize,
     _: usize,
 ) -> Status {
     Status::UNSUPPORTED
 }
+}
 
-pub extern "win64" fn stdout_enable_cursor(_: *mut SimpleTextOutputProtocol, _: Boolean) -> Status {
+eficall! {
+pub fn stdout_enable_cursor(_: *mut SimpleTextOutputProtocol, _: Boolean) -> Status {
     Status::UNSUPPORTED
+}
 }
 
 pub const STDIN: SimpleTextInputProtocol = SimpleTextInputProtocol {
