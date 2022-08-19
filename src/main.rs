@@ -99,7 +99,7 @@ fn enable_sse() {
 const VIRTIO_PCI_VENDOR_ID: u16 = 0x1af4;
 const VIRTIO_PCI_BLOCK_DEVICE_ID: u16 = 0x1042;
 
-fn boot_from_device(device: &mut block::VirtioBlockDevice, #[cfg(target_arch = "x86_64")] info: &dyn boot::Info) -> bool {
+fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn boot::Info) -> bool {
     if let Err(err) = device.init() {
         log!("Error configuring block device: {:?}", err);
         return false;
@@ -136,14 +136,18 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, #[cfg(target_arch = "
     }
 
     log!("Using EFI boot.");
-    let mut file = match f.open("/EFI/BOOT/BOOTAA64 EFI") {
+    #[cfg(target_arch = "x86_64")]
+    let efi_boot_path = "/EFI/BOOT/BOOTX64.EFI";
+    #[cfg(target_arch = "aarch64")]
+    let efi_boot_path = "/EFI/BOOT/BOOTAA64.EFI";
+    let mut file = match f.open(efi_boot_path) {
         Ok(file) => file,
         Err(err) => {
             log!("Failed to load default EFI binary: {:?}", err);
             return false;
         }
     };
-    log!("Found bootloader (BOOTAA64.EFI)");
+    log!("Found bootloader: {}", efi_boot_path);
 
     let mut l = pe::Loader::new(&mut file);
     let load_addr = 0x20_0000;
@@ -156,7 +160,7 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, #[cfg(target_arch = "
     };
 
     log!("Executable loaded");
-    //efi::efi_exec(entry_addr, load_addr, size, info, &f, device);
+    efi::efi_exec(entry_addr, load_addr, size, info, &f, device);
     true
 }
 
