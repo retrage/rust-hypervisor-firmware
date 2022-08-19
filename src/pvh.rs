@@ -6,7 +6,7 @@ use crate::{
 };
 
 // Structures from xen/include/public/arch-x86/hvm/start_info.h
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct StartInfo {
     magic: [u8; 4],
