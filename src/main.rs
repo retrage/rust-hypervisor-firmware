@@ -37,7 +37,6 @@ mod common;
 #[cfg(not(test))]
 mod asm;
 mod block;
-#[cfg(target_arch = "x86_64")]
 mod boot;
 #[cfg(target_arch = "x86_64")]
 mod bzimage;
@@ -45,9 +44,10 @@ mod bzimage;
 mod coreboot;
 #[cfg(target_arch = "x86_64")]
 mod delay;
-#[cfg(target_arch = "x86_64")]
 mod efi;
 mod fat;
+#[cfg(target_arch = "aarch64")]
+mod fdt;
 #[cfg(target_arch = "x86_64")]
 mod gdt;
 #[cfg(all(test, feature = "integration_tests"))]
@@ -55,6 +55,7 @@ mod integration;
 #[cfg(target_arch = "x86_64")]
 mod loader;
 mod mem;
+mod mmio;
 #[cfg(target_arch = "x86_64")]
 mod paging;
 mod part;
