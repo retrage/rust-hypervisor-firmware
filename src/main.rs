@@ -197,7 +197,6 @@ const VIRTIO_MMIO_BLOCK_DEVICE_ID: u32 = 0x2;
 fn main(info: &dyn boot::Info) -> ! {
     log!("\nBooting...");
 
-    #[cfg(target_arch = "aarch64")]
     mmio::with_devices(
         VIRTIO_MMIO_VENDOR_ID,
         VIRTIO_MMIO_BLOCK_DEVICE_ID,
@@ -205,7 +204,7 @@ fn main(info: &dyn boot::Info) -> ! {
             let mut mmio_transport = mmio::VirtioMmioTransport::new(mmio_device);
             let mut device = block::VirtioBlockDevice::new(&mut mmio_transport);
             boot_from_device(&mut device, info)
-        }
+        },
     );
 
     pci::print_bus();
