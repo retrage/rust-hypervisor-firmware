@@ -1055,6 +1055,7 @@ pub fn efi_exec(
     let vendor_data = 0u32;
     let acpi_rsdp_ptr = info.rsdp_addr();
 
+    #[cfg(target_arch = "x86_64")]
     let mut ct = if acpi_rsdp_ptr != 0 {
         efi::ConfigurationTable {
             vendor_guid: Guid::from_fields(
@@ -1065,7 +1066,7 @@ pub fn efi_exec(
                 0x22,
                 &[0x00, 0x80, 0xc7, 0x3c, 0x88, 0x81],
             ),
-            vendor_table: acpi_rsdp_ptr as u64 as *mut _,
+            vendor_table: acpi_rsdp_ptr as *mut _,
         }
     } else {
         efi::ConfigurationTable {
@@ -1079,6 +1080,20 @@ pub fn efi_exec(
             ),
             vendor_table: &vendor_data as *const _ as *mut _,
         }
+    };
+
+    #[cfg(target_arch = "aarch64")]
+    let mut ct = efi::ConfigurationTable {
+        // FDT
+        vendor_guid: Guid::from_fields(
+            0xb1b621d5,
+            0xf19c,
+            0x41a5,
+            0x83,
+            0x0b,
+            &[0xd9, 0x15, 0x2c, 0x69, 0xaa, 0xe0],
+        ),
+        vendor_table: acpi_rsdp_ptr as *mut _,
     };
 
     let mut stdin = console::STDIN;
@@ -1099,7 +1114,10 @@ pub fn efi_exec(
     let wrapped_fs = file::FileSystemWrapper::new(fs, efi_part_id);
 
     let image = new_image_handle(
+        #[cfg(target_arch = "x86_64")]
         "\\EFI\\BOOT\\BOOTX64.EFI",
+        #[cfg(target_arch = "aarch64")]
+        "\\EFI\\BOOT\\BOOTAA64.EFI",
         0 as Handle,
         &wrapped_fs as *const _ as Handle,
         loaded_address,
