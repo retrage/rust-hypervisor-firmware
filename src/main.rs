@@ -150,7 +150,10 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn boot::Info
     log!("Found bootloader: {}", efi_boot_path);
 
     let mut l = pe::Loader::new(&mut file);
+    #[cfg(target_arch = "x86_64")]
     let load_addr = 0x20_0000;
+    #[cfg(target_arch = "aarch64")]
+    let load_addr = 0x4010_0000;
     let (entry_addr, load_addr, size) = match l.load(load_addr) {
         Ok(load_info) => load_info,
         Err(err) => {
