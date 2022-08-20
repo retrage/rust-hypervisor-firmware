@@ -25,8 +25,10 @@ use uart_16550::SerialPort;
 #[cfg(target_arch = "x86_64")]
 pub static PORT: AtomicRefCell<SerialPort> = AtomicRefCell::new(unsafe { SerialPort::new(0x3f8) });
 
+#[cfg(target_arch = "aarch64")]
 pub struct Pl011SerialPort;
 
+#[cfg(target_arch = "aarch64")]
 impl Pl011SerialPort {
     pub const fn new() -> Self {
         Self {}
@@ -44,6 +46,7 @@ impl Pl011SerialPort {
     }
 }
 
+#[cfg(target_arch = "aarch64")]
 impl fmt::Write for Pl011SerialPort {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for byte in s.bytes() {
