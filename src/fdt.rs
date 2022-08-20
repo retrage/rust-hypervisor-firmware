@@ -1,4 +1,10 @@
-use fdt_rs::{base::DevTree, prelude::PropReader};
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2022 Akira Moroo
+
+use fdt_rs::{
+    base::{DevTree, DevTreeNode, DevTreeProp},
+    prelude::PropReader,
+};
 
 use crate::boot::{E820Entry, Info};
 
@@ -22,23 +28,40 @@ impl StartInfo<'_> {
         }
     }
 
-    fn find_prop_with<'a>(&'a self, target_node: &str, target_prop: &str) -> Option<&'a [u8]> {
+    fn get_raw_prop_with<'a, P, Q>(
+        &'a self,
+        node_predicate: P,
+        prop_predicate: Q,
+    ) -> Option<&'a [u8]>
+    where
+        P: Fn(&DevTreeNode) -> bool,
+        Q: Fn(&DevTreeProp) -> bool,
+    {
         let mut items = self.fdt.items();
         while let Ok(Some(node)) = items.next_node() {
-            if let Ok(node_name) = node.name() {
-                if node_name == target_node {
-                    let mut props = node.props();
-                    while let Ok(Some(prop)) = props.0.next_prop() {
-                        if let Ok(prop_name) = prop.name() {
-                            if prop_name == target_prop {
-                                return Some(prop.raw());
-                            }
-                        }
+            if node_predicate(&node) {
+                let mut props = node.props();
+                while let Ok(Some(prop)) = props.0.next_prop() {
+                    if prop_predicate(&prop) {
+                        return Some(prop.raw());
                     }
                 }
             }
         }
         None
+    }
+
+    fn get_memory_reg_raw_prop<'a>(&'a self) -> Option<&'a [u8]> {
+        self.get_raw_prop_with(
+            |node| match node.name() {
+                Ok(name) => name.starts_with("memory@"),
+                Err(_) => false,
+            },
+            |prop| match prop.name() {
+                Ok(name) => name == "reg",
+                Err(_) => false,
+            },
+        )
     }
 }
 
@@ -53,17 +76,44 @@ impl Info for StartInfo<'_> {
     }
 
     fn cmdline(&self) -> &[u8] {
-        match self.find_prop_with("chosen", "bootargs") {
+        match self.get_raw_prop_with(
+            |node| match node.name() {
+                Ok(name) => name == "chosen",
+                Err(_) => false,
+            },
+            |prop| match prop.name() {
+                Ok(name) => name == "bootargs",
+                Err(_) => false,
+            },
+        ) {
             Some(prop) => prop,
             None => b"",
         }
     }
 
     fn num_entries(&self) -> u8 {
-        todo!()
+        match self.get_memory_reg_raw_prop() {
+            Some(prop) => (prop.len() / (core::mem::size_of::<u64>() * 2)) as u8,
+            None => 0,
+        }
     }
 
     fn entry(&self, idx: u8) -> E820Entry {
-        todo!()
+        assert!(idx < self.num_entries());
+        match self.get_memory_reg_raw_prop() {
+            Some(prop) => {
+                let mut buf = [0_u8; 8];
+                buf.clone_from_slice(&prop[(idx as usize * 16)..(idx as usize * 16 + 8)]);
+                let addr = u64::from_be_bytes(buf);
+                buf.clone_from_slice(&prop[(idx as usize * 16 + 8)..(idx as usize * 16 + 16)]);
+                let size = u64::from_be_bytes(buf);
+                E820Entry {
+                    addr,
+                    size,
+                    entry_type: E820Entry::RAM_TYPE,
+                }
+            }
+            None => panic!("No valid e820 entry found"),
+        }
     }
 }
