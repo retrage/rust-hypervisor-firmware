@@ -1138,7 +1138,7 @@ fn new_image_handle(
     crate::common::ascii_to_ucs2(path, &mut file_paths[0].filename);
 
     let mut image = null_mut();
-    allocate_pool(
+    let status = allocate_pool(
         efi::LOADER_DATA,
         size_of::<LoadedImageWrapper>(),
         &mut image as *mut *mut c_void,
