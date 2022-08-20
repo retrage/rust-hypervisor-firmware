@@ -682,8 +682,51 @@ pub fn locate_device_path(
 }
 
 eficall! {
-pub fn install_configuration_table(_: *mut Guid, _: *mut c_void) -> Status {
-    Status::UNSUPPORTED
+pub fn install_configuration_table(guid: *mut Guid, table: *mut c_void) -> Status {
+    let st = unsafe { &mut ST };
+    let ct = unsafe { core::slice::from_raw_parts_mut(st.configuration_table, 8) };
+
+    let empty_guid = Guid::from_fields(0, 0, 0, 0, 0, &[0_u8; 6]);
+
+    // Update existing table.
+    for entry in ct.iter_mut() {
+        if entry.vendor_guid == unsafe { *guid } {
+            entry.vendor_table = table;
+            if table == null_mut() {
+                // Delete the table.
+                entry.vendor_guid = empty_guid;
+                entry.vendor_table = null_mut();
+                st.number_of_table_entries -= 1;
+            } else {
+                entry.vendor_table = table;
+            }
+            return Status::SUCCESS;
+        }
+    }
+
+    // No matching table found.
+    if table == null_mut() {
+        // No table found, but trying to delete the table.
+        return Status::NOT_FOUND;
+    }
+
+    // Create a new table.
+    if st.number_of_table_entries >= 8 {
+        // No space left.
+        return Status::OUT_OF_RESOURCES;
+    }
+
+    for entry in ct.iter_mut() {
+        if entry.vendor_guid == empty_guid && entry.vendor_table == null_mut() {
+            entry.vendor_guid = unsafe { *guid };
+            entry.vendor_table = table;
+            st.number_of_table_entries += 1;
+            return Status::SUCCESS;
+        }
+    }
+
+    // Unreachable.
+    Status::OUT_OF_RESOURCES
 }
 }
 
