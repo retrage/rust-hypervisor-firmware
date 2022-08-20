@@ -1224,7 +1224,7 @@ pub fn efi_exec(
     let acpi_rsdp_ptr = info.rsdp_addr();
 
     #[cfg(target_arch = "x86_64")]
-    let mut ct = if acpi_rsdp_ptr != 0 {
+    let ct = if acpi_rsdp_ptr != 0 {
         efi::ConfigurationTable {
             vendor_guid: Guid::from_fields(
                 0x8868_e871,
@@ -1251,8 +1251,8 @@ pub fn efi_exec(
     };
 
     #[cfg(target_arch = "aarch64")]
-    let mut ct = efi::ConfigurationTable {
-        // FDT
+    let ct = efi::ConfigurationTable {
+        // DTB Table GUID
         vendor_guid: Guid::from_fields(
             0xb1b621d5,
             0xf19c,
@@ -1264,6 +1264,13 @@ pub fn efi_exec(
         vendor_table: acpi_rsdp_ptr as *mut _,
     };
 
+    let empty_table = efi::ConfigurationTable {
+        vendor_guid: Guid::from_fields(0, 0, 0, 0, 0, &[0_u8; 6]),
+        vendor_table: null_mut(),
+    };
+    let mut configuration_table = [empty_table; 8];
+    configuration_table[0] = ct;
+
     let mut stdin = console::STDIN;
     let mut stdout = console::STDOUT;
     let mut st = unsafe { &mut ST };
@@ -1273,7 +1280,7 @@ pub fn efi_exec(
     st.runtime_services = unsafe { &mut RS };
     st.boot_services = unsafe { &mut BS };
     st.number_of_table_entries = 1;
-    st.configuration_table = &mut ct;
+    st.configuration_table = &mut configuration_table[0];
 
     populate_allocator(info, loaded_address, loaded_size);
 
