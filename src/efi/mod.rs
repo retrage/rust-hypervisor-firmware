@@ -1041,12 +1041,14 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
     assert!(stack_start % PAGE_SIZE == 0);
 
     // Add ourselves
-    ALLOCATOR.borrow_mut().allocate_pages(
-        efi::ALLOCATE_ADDRESS,
-        efi::RUNTIME_SERVICES_DATA,
-        (text_start - ram_min) / PAGE_SIZE,
-        ram_min,
-    );
+    if text_start - ram_min > 0 {
+        ALLOCATOR.borrow_mut().allocate_pages(
+            efi::ALLOCATE_ADDRESS,
+            efi::RUNTIME_SERVICES_DATA,
+            (text_start - ram_min) / PAGE_SIZE,
+            ram_min,
+        );
+    }
     ALLOCATOR.borrow_mut().allocate_pages(
         efi::ALLOCATE_ADDRESS,
         efi::RUNTIME_SERVICES_CODE,
