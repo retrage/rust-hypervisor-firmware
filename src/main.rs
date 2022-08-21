@@ -62,6 +62,8 @@ mod paging;
 mod part;
 mod pci;
 mod pe;
+#[cfg(target_arch = "aarch64")]
+mod pl011;
 #[cfg(target_arch = "x86_64")]
 mod pvh;
 #[cfg(target_arch = "x86_64")]

@@ -18,43 +18,16 @@
 use core::fmt;
 
 use atomic_refcell::AtomicRefCell;
+
+#[cfg(target_arch = "aarch64")]
+use crate::pl011::Pl011SerialPort;
+
 #[cfg(target_arch = "x86_64")]
 use uart_16550::SerialPort;
 
 // We use COM1 as it is the standard first serial port.
 #[cfg(target_arch = "x86_64")]
 pub static PORT: AtomicRefCell<SerialPort> = AtomicRefCell::new(unsafe { SerialPort::new(0x3f8) });
-
-#[cfg(target_arch = "aarch64")]
-pub struct Pl011SerialPort;
-
-#[cfg(target_arch = "aarch64")]
-impl Pl011SerialPort {
-    pub const fn new() -> Self {
-        Self {}
-    }
-
-    pub fn init(&mut self) {
-        // Do nothing
-    }
-
-    pub fn send(&mut self, data: u8) {
-        const BASE_ADDR: *mut u8 = 0x0900_0000 as *mut u8;
-        unsafe {
-            core::ptr::write_volatile(BASE_ADDR, data);
-        }
-    }
-}
-
-#[cfg(target_arch = "aarch64")]
-impl fmt::Write for Pl011SerialPort {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        for byte in s.bytes() {
-            self.send(byte);
-        }
-        Ok(())
-    }
-}
 
 #[cfg(target_arch = "aarch64")]
 pub static PORT: AtomicRefCell<Pl011SerialPort> = AtomicRefCell::new(Pl011SerialPort::new());
