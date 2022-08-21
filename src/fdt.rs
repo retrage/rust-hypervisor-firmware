@@ -28,14 +28,14 @@ impl StartInfo<'_> {
         }
     }
 
-    fn get_raw_prop_with<'a, P, Q>(
+    fn get_raw_prop_with<'a, N, P>(
         &'a self,
-        node_predicate: P,
-        prop_predicate: Q,
+        node_predicate: N,
+        prop_predicate: P,
     ) -> Option<&'a [u8]>
     where
-        P: Fn(&DevTreeNode) -> bool,
-        Q: Fn(&DevTreeProp) -> bool,
+        N: Fn(&DevTreeNode) -> bool,
+        P: Fn(&DevTreeProp) -> bool,
     {
         let mut items = self.fdt.items();
         while let Ok(Some(node)) = items.next_node() {
