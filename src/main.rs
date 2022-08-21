@@ -55,6 +55,7 @@ mod integration;
 #[cfg(target_arch = "x86_64")]
 mod loader;
 mod mem;
+#[cfg(target_arch = "aarch64")]
 mod mmio;
 #[cfg(target_arch = "x86_64")]
 mod paging;
@@ -197,10 +198,15 @@ pub extern "C" fn rust64_start(x0: *const u8) -> ! {
 const VIRTIO_MMIO_VENDOR_ID: u32 = 0x554d4551;
 const VIRTIO_MMIO_BLOCK_DEVICE_ID: u32 = 0x2;
 
-fn main(info: &dyn boot::Info) -> ! {
-    log!("\nBooting with {}", info.name());
+fn main(
+    #[cfg(target_arch = "x86_64")] info: &dyn boot::Info,
+    #[cfg(target_arch = "aarch64")] info: &fdt::StartInfo,
+) -> ! {
+    log!("\nBooting...");
 
+    #[cfg(target_arch = "aarch64")]
     mmio::with_devices(
+        info,
         VIRTIO_MMIO_VENDOR_ID,
         VIRTIO_MMIO_BLOCK_DEVICE_ID,
         |mmio_device| {

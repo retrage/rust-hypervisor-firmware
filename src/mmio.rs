@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2022 Akira Moroo
 
+use fdt_rs::{base::DevTreeNode, prelude::PropReader};
+
 use crate::{
-    mem,
+    fdt, mem,
     virtio::{Error as VirtioError, VirtioTransport},
 };
 
@@ -10,11 +12,6 @@ use crate::{
 pub struct VirtioMmioTransport {
     device: MmioDevice,
 }
-
-// TODO: Get virtio-mmio base from FDT.
-const VIRTIO_MMIO_BASE: usize = 0xa000000;
-const VIRTIO_MMIO_SIZE: usize = 0x200;
-const MAX_DEVICES: u8 = 32;
 
 impl VirtioMmioTransport {
     pub fn new(device: MmioDevice) -> Self {
@@ -139,9 +136,9 @@ pub struct MmioDevice {
 }
 
 impl MmioDevice {
-    pub fn new(base_addr: usize) -> Self {
+    pub fn new(base: u64, size: u64) -> Self {
         Self {
-            region: mem::MemoryRegion::new(base_addr as u64, VIRTIO_MMIO_SIZE as u64),
+            region: mem::MemoryRegion::new(base, size),
             ..Default::default()
         }
     }
@@ -163,19 +160,51 @@ impl MmioDevice {
     }
 }
 
-pub fn with_devices<F>(target_vendor_id: u32, target_device_id: u32, per_device: F)
-where
+fn is_virtio_mmio(node: &DevTreeNode) -> bool {
+    if let Ok(name) = node.name() {
+        return name.starts_with("virtio_mmio@");
+    }
+    false
+}
+
+fn get_virtio_mmio_info(node: &DevTreeNode) -> Option<(u64, u64)> {
+    let mut props = node.props();
+    while let Ok(Some(prop)) = props.0.next_prop() {
+        if let Ok(name) = prop.name() {
+            if name == "reg" {
+                let raw = prop.raw();
+                let mut buf = [0_u8; 8];
+                buf.clone_from_slice(&raw[0..8]);
+                let base = u64::from_be_bytes(buf);
+                buf.clone_from_slice(&raw[8..16]);
+                let size = u64::from_be_bytes(buf);
+                return Some((base, size));
+            }
+        }
+    }
+    None
+}
+
+pub fn with_devices<F>(
+    info: &fdt::StartInfo,
+    target_vendor_id: u32,
+    target_device_id: u32,
+    per_device: F,
+) where
     F: Fn(MmioDevice) -> bool,
 {
-    for index in 0..(MAX_DEVICES as usize) {
-        let base_addr = VIRTIO_MMIO_BASE + (VIRTIO_MMIO_SIZE * index);
-        let mut device = MmioDevice::new(base_addr);
-        device.init();
-        if device.vendor_id == target_vendor_id
-            && device.device_id == target_device_id
-            && per_device(device)
-        {
-            break;
+    let mut index = 0;
+    while let Some(node) = info.get_node_with(index, is_virtio_mmio) {
+        index += 1;
+        if let Some((base, size)) = get_virtio_mmio_info(&node) {
+            let mut device = MmioDevice::new(base, size);
+            device.init();
+            if device.vendor_id == target_vendor_id
+                && device.device_id == target_device_id
+                && per_device(device)
+            {
+                break;
+            }
         }
     }
 }
