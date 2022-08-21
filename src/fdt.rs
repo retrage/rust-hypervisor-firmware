@@ -63,6 +63,37 @@ impl StartInfo<'_> {
             },
         )
     }
+
+    pub fn get_num_nodes_with<N>(&self, node_predicate: N) -> usize
+    where
+        N: Fn(&DevTreeNode) -> bool,
+    {
+        let mut num = 0;
+        let mut items = self.fdt.items();
+        while let Ok(Some(node)) = items.next_node() {
+            if node_predicate(&node) {
+                num += 1;
+            }
+        }
+        num
+    }
+
+    pub fn get_node_with<'a, N>(&'a self, idx: usize, node_predicate: N) -> Option<DevTreeNode>
+    where
+        N: Fn(&DevTreeNode) -> bool,
+    {
+        let mut count = idx;
+        let mut items = self.fdt.items();
+        while let Ok(Some(node)) = items.next_node() {
+            if node_predicate(&node) {
+                if count == 0 {
+                    return Some(node);
+                }
+                count -= 1;
+            }
+        }
+        None
+    }
 }
 
 impl Info for StartInfo<'_> {
