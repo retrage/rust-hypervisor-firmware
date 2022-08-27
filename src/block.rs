@@ -98,6 +98,13 @@ struct BlockRequestFooter {
     status: u8,
 }
 
+static mut HEADER: BlockRequestHeader = BlockRequestHeader {
+    request: 0,
+    reserved: 0,
+    sector: 0,
+};
+static mut FOOTER: BlockRequestFooter = BlockRequestFooter { status: 0 };
+
 const SECTOR_SIZE: usize = 512;
 
 #[repr(C)]
@@ -245,20 +252,16 @@ impl<'a> VirtioBlockDevice<'a> {
         const VIRTIO_BLK_S_IOERR: u8 = 1;
         const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 
-        let header = BlockRequestHeader {
-            request: request as u32,
-            reserved: 0,
-            sector,
-        };
-
-        let footer = BlockRequestFooter { status: 0 };
+        unsafe {
+            HEADER.sector = sector;
+        }
 
         let mut state = self.state.borrow_mut();
 
         let next_head = state.next_head;
         let mut d = &mut state.descriptors[next_head];
         let next_desc = (next_head + 1) % QUEUE_SIZE;
-        d.addr = (&header as *const _) as u64;
+        d.addr = unsafe { &HEADER as *const _ as u64 };
         d.length = core::mem::size_of::<BlockRequestHeader>() as u32;
         d.flags = VIRTQ_DESC_F_NEXT;
         d.next = next_desc as u16;
@@ -289,7 +292,7 @@ impl<'a> VirtioBlockDevice<'a> {
         d.next = next_desc as u16;
 
         let mut d = &mut state.descriptors[next_desc];
-        d.addr = (&footer as *const _) as u64;
+        d.addr = unsafe { &FOOTER as *const _ as u64 };
         d.length = core::mem::size_of::<BlockRequestFooter>() as u32;
         d.flags = VIRTQ_DESC_F_WRITE;
         d.next = 0;
@@ -312,11 +315,13 @@ impl<'a> VirtioBlockDevice<'a> {
             core::sync::atomic::fence(core::sync::atomic::Ordering::Acquire);
         }
 
-        match footer.status {
-            VIRTIO_BLK_S_OK => Ok(()),
-            VIRTIO_BLK_S_IOERR => Err(Error::BlockIO),
-            VIRTIO_BLK_S_UNSUPP => Err(Error::BlockNotSupported),
-            _ => Err(Error::BlockNotSupported),
+        unsafe {
+            match FOOTER.status {
+                VIRTIO_BLK_S_OK => Ok(()),
+                VIRTIO_BLK_S_IOERR => Err(Error::BlockIO),
+                VIRTIO_BLK_S_UNSUPP => Err(Error::BlockNotSupported),
+                _ => Err(Error::BlockNotSupported),
+            }
         }
     }
 }
