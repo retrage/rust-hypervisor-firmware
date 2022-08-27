@@ -61,14 +61,7 @@ impl PciConfig {
 
     #[cfg(target_arch = "x86_64")]
     fn read(&mut self, bus: u8, device: u8, func: u8, offset: u8) -> u32 {
-        assert_eq!(offset % 4, 0);
-        assert!(device < MAX_DEVICES);
-        assert!(func < MAX_FUNCTIONS);
-
-        let addr = u32::from(bus) << 16; // bus bits 23-16
-        let addr = addr | u32::from(device) << 11; // slot/device bits 15-11
-        let addr = addr | u32::from(func) << 8; // function bits 10-8
-        let addr = addr | u32::from(offset & 0xfc); // register 7-0
+        let addr = Self::get_addr(bus, device, func, offset);
         let addr = addr | 1u32 << 31; // enable bit 31
 
         // SAFETY: We have exclusive access to the ports, so the data read will
@@ -81,20 +74,35 @@ impl PciConfig {
 
     #[cfg(target_arch = "aarch64")]
     fn read(&self, bus: u8, device: u8, func: u8, offset: u8) -> u32 {
-        assert_eq!(offset % 4, 0);
-        assert!(device < MAX_DEVICES);
-        assert!(func < MAX_FUNCTIONS);
+        let addr = Self::get_addr(bus, device, func, offset);
+        self.region.io_read_u32(addr as u64)
+    }
 
-        // dev[bus][device][function]
-        let addr = PciConfig::get_addr(bus as u64, device as u64, func as u64);
-
-        self.region.io_read_u32(addr + u64::from(offset))
+    #[cfg(target_arch = "x86_64")]
+    fn write(&mut self, bus: u8, device: u8, func: u8, offset: u8, value: u32) {
+        let addr = Self::get_addr(bus, device, func, offset);
+        let addr = addr | 1u32 << 31; // enable bit 31
+                                      // TODO: Add write support for x86_64
     }
 
     #[cfg(target_arch = "aarch64")]
-    fn get_addr(bus: u64, device: u64, func: u64) -> u64 {
-        const ECAM_SIZE: u64 = 0x1000;
-        ECAM_SIZE * (func + device * MAX_FUNCTIONS as u64 + bus * (MAX_DEVICES as u64 * MAX_FUNCTIONS as u64))
+    fn write(&mut self, bus: u8, device: u8, func: u8, offset: u8, value: u32) {
+        let addr = Self::get_addr(bus, device, func, offset);
+        self.region.io_write_u32(addr as u64, value);
+    }
+
+    fn get_addr(bus: u8, device: u8, func: u8, offset: u8) -> u32 {
+        assert_eq!(offset % 4, 0);
+        assert!(bus < MAX_BUSES);
+        assert!(device < MAX_DEVICES);
+        assert!(func < MAX_FUNCTIONS);
+
+        let addr = u32::from(bus) << 16; // bus bits 23-16
+        let addr = addr | u32::from(device) << 11; // slot/device bits 15-11
+        let addr = addr | u32::from(func) << 8; // function bits 10-8
+        let addr = addr | u32::from(offset & 0xfc); // register 7-0
+
+        addr
     }
 }
 
