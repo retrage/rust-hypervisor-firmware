@@ -197,9 +197,6 @@ pub extern "C" fn rust64_start(x0: *const u8) -> ! {
     main(&info)
 }
 
-const VIRTIO_MMIO_VENDOR_ID: u32 = 0x554d4551;
-const VIRTIO_MMIO_BLOCK_DEVICE_ID: u32 = 0x2;
-
 fn main(
     #[cfg(target_arch = "x86_64")] info: &dyn boot::Info,
     #[cfg(target_arch = "aarch64")] info: &fdt::StartInfo,
@@ -207,16 +204,20 @@ fn main(
     log!("\nBooting...");
 
     #[cfg(target_arch = "aarch64")]
-    mmio::with_devices(
-        info,
-        VIRTIO_MMIO_VENDOR_ID,
-        VIRTIO_MMIO_BLOCK_DEVICE_ID,
-        |mmio_device| {
-            let mut mmio_transport = mmio::VirtioMmioTransport::new(mmio_device);
-            let mut device = block::VirtioBlockDevice::new(&mut mmio_transport);
-            boot_from_device(&mut device, info)
-        },
-    );
+    {
+        const VIRTIO_MMIO_VENDOR_ID: u32 = 0x554d4551;
+        const VIRTIO_MMIO_BLOCK_DEVICE_ID: u32 = 0x2;
+        mmio::with_devices(
+            info,
+            VIRTIO_MMIO_VENDOR_ID,
+            VIRTIO_MMIO_BLOCK_DEVICE_ID,
+            |mmio_device| {
+                let mut mmio_transport = mmio::VirtioMmioTransport::new(mmio_device);
+                let mut device = block::VirtioBlockDevice::new(&mut mmio_transport);
+                boot_from_device(&mut device, info)
+            },
+        );
+    }
 
     pci::print_bus();
 
