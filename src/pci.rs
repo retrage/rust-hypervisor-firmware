@@ -304,10 +304,14 @@ enum VirtioPciCapabilityType {
 #[derive(Default)]
 pub struct VirtioPciTransport {
     device: PciDevice,
-    region: mem::MemoryRegion,               // common configuration region
-    notify_region: mem::MemoryRegion,        // notify region
-    notify_off_multiplier: u32,              // from notify config cap
-    device_config_region: mem::MemoryRegion, // device specific region
+    notify_off_multiplier: u32, // from notify config cap
+    cap_pci_cfg: u8,
+    common_config_bar: u8,
+    common_config_offset: u32,
+    notify_config_bar: u8,
+    notify_config_offset: u32,
+    device_config_bar: u8,
+    device_config_offset: u32,
 }
 
 impl VirtioPciTransport {
@@ -316,6 +320,96 @@ impl VirtioPciTransport {
             device,
             ..Default::default()
         }
+    }
+
+    fn read_u32(&self, bar: u8, offset: u32) -> u32 {
+        assert_ne!(self.cap_pci_cfg, 0);
+
+        self.device.write_u8(self.cap_pci_cfg + 4, bar);
+        self.device.write_u32(self.cap_pci_cfg + 12, 4);
+        self.device.write_u32(self.cap_pci_cfg + 8, offset);
+        self.device.read_u32(self.cap_pci_cfg + 16)
+    }
+
+    fn read_u16(&self, bar: u8, offset: u32) -> u16 {
+        assert_ne!(self.cap_pci_cfg, 0);
+
+        self.device.write_u8(self.cap_pci_cfg + 4, bar);
+        self.device.write_u32(self.cap_pci_cfg + 12, 2);
+        self.device.write_u32(self.cap_pci_cfg + 8, offset);
+        self.device.read_u16(self.cap_pci_cfg + 16)
+    }
+
+    fn read_u8(&self, bar: u8, offset: u32) -> u8 {
+        assert_ne!(self.cap_pci_cfg, 0);
+
+        self.device.write_u8(self.cap_pci_cfg + 4, bar);
+        self.device.write_u32(self.cap_pci_cfg + 12, 1);
+        self.device.write_u32(self.cap_pci_cfg + 8, offset);
+        self.device.read_u8(self.cap_pci_cfg + 16)
+    }
+
+    fn write_u32(&self, bar: u8, offset: u32, value: u32) {
+        assert_ne!(self.cap_pci_cfg, 0);
+
+        self.device.write_u8(self.cap_pci_cfg + 4, bar);
+        self.device.write_u32(self.cap_pci_cfg + 12, 4);
+        self.device.write_u32(self.cap_pci_cfg + 8, offset);
+        self.device.write_u32(self.cap_pci_cfg + 16, value);
+    }
+
+    fn write_u16(&self, bar: u8, offset: u32, value: u16) {
+        assert_ne!(self.cap_pci_cfg, 0);
+
+        self.device.write_u8(self.cap_pci_cfg + 4, bar);
+        self.device.write_u32(self.cap_pci_cfg + 12, 2);
+        self.device.write_u32(self.cap_pci_cfg + 8, offset);
+        self.device.write_u16(self.cap_pci_cfg + 16, value);
+    }
+
+    fn write_u8(&self, bar: u8, offset: u32, value: u8) {
+        assert_ne!(self.cap_pci_cfg, 0);
+
+        self.device.write_u8(self.cap_pci_cfg + 4, bar);
+        self.device.write_u32(self.cap_pci_cfg + 12, 1);
+        self.device.write_u32(self.cap_pci_cfg + 8, offset);
+        self.device.write_u8(self.cap_pci_cfg + 16, value);
+    }
+
+    fn region_read_u32(&self, offset: u32) -> u32 {
+        self.read_u32(self.common_config_bar, self.common_config_offset + offset)
+    }
+
+    fn region_read_u16(&self, offset: u32) -> u16 {
+        self.read_u16(self.common_config_bar, self.common_config_offset + offset)
+    }
+
+    fn region_read_u8(&self, offset: u32) -> u8 {
+        self.read_u8(self.common_config_bar, self.common_config_offset + offset)
+    }
+
+    fn region_write_u32(&self, offset: u32, value: u32) {
+        self.write_u32(
+            self.common_config_bar,
+            self.common_config_offset + offset,
+            value,
+        );
+    }
+
+    fn region_write_u16(&self, offset: u32, value: u16) {
+        self.write_u16(
+            self.common_config_bar,
+            self.common_config_offset + offset,
+            value,
+        );
+    }
+
+    fn region_write_u8(&self, offset: u32, value: u8) {
+        self.write_u8(
+            self.common_config_bar,
+            self.common_config_offset + offset,
+            value,
+        );
     }
 }
 // Common Configuration registers:
@@ -371,20 +465,15 @@ impl VirtioTransport for VirtioPciTransport {
                 #[allow(clippy::blacklisted_name)]
                 let bar = self.device.read_u8(cap_next + 4);
                 let offset = self.device.read_u32(cap_next + 8);
-                let length = self.device.read_u32(cap_next + 12);
 
                 if cfg_type == VirtioPciCapabilityType::CommonConfig as u8 {
-                    self.region = mem::MemoryRegion::new(
-                        self.device.bars[usize::from(bar)].address + u64::from(offset),
-                        u64::from(length),
-                    );
+                    self.common_config_bar = bar;
+                    self.common_config_offset = offset;
                 }
 
                 if cfg_type == VirtioPciCapabilityType::NotifyConfig as u8 {
-                    self.notify_region = mem::MemoryRegion::new(
-                        self.device.bars[usize::from(bar)].address + u64::from(offset),
-                        u64::from(length),
-                    );
+                    self.notify_config_bar = bar;
+                    self.notify_config_offset = offset;
 
                     // struct virtio_pci_notify_cap {
                     //         struct virtio_pci_cap cap;
@@ -394,10 +483,16 @@ impl VirtioTransport for VirtioPciTransport {
                 }
 
                 if cfg_type == VirtioPciCapabilityType::DeviceConfig as u8 {
-                    self.device_config_region = mem::MemoryRegion::new(
-                        self.device.bars[usize::from(bar)].address + u64::from(offset),
-                        u64::from(length),
-                    );
+                    self.device_config_bar = bar;
+                    self.device_config_offset = offset;
+                }
+
+                if cfg_type == VirtioPciCapabilityType::PciConfig as u8 {
+                    // struct virtio_pci_cfg_cap {
+                    //     struct virtio_pci_cap cap;
+                    //     u8 pci_cfg_data[4]; /* Data for BAR access. */
+                    // };
+                    self.cap_pci_cfg = cap_next;
                 }
             }
             cap_next = self.device.read_u8(cap_next + 1)
@@ -408,12 +503,14 @@ impl VirtioTransport for VirtioPciTransport {
 
     fn get_status(&self) -> u32 {
         // device_status: 0x14
-        u32::from(self.region.io_read_u8(0x14))
+        // u32::from(self.region_read_u8(0x14))
+        self.region_read_u32(0x14)
     }
 
     fn set_status(&self, value: u32) {
         // device_status: 0x14
-        self.region.io_write_u8(0x14, value as u8);
+        // self.region_write_u8(0x14, value as u8);
+        self.region_write_u32(0x14, value);
     }
 
     fn add_status(&self, value: u32) {
@@ -426,74 +523,84 @@ impl VirtioTransport for VirtioPciTransport {
 
     fn get_features(&self) -> u64 {
         // device_feature_select: 0x00
-        self.region.io_write_u32(0x00, 0);
+        self.region_write_u32(0x00, 0);
         // device_feature: 0x04
-        let mut device_features: u64 = u64::from(self.region.io_read_u32(0x04));
+        let mut device_features: u64 = u64::from(self.region_read_u32(0x04));
         // device_feature_select: 0x00
-        self.region.io_write_u32(0x00, 1);
+        self.region_write_u32(0x00, 1);
         // device_feature: 0x04
-        device_features |= u64::from(self.region.io_read_u32(0x04)) << 32;
+        device_features |= u64::from(self.region_read_u32(0x04)) << 32;
 
         device_features
     }
 
     fn set_features(&self, features: u64) {
         // driver_feature_select: 0x08
-        self.region.io_write_u32(0x08, 0);
+        self.region_write_u32(0x08, 0);
         // driver_feature: 0x0c
-        self.region.io_write_u32(0x0c, features as u32);
+        self.region_write_u32(0x0c, features as u32);
         // driver_feature_select: 0x08
-        self.region.io_write_u32(0x08, 1);
+        self.region_write_u32(0x08, 1);
         // driver_feature: 0x0c
-        self.region.io_write_u32(0x0c, (features >> 32) as u32);
+        self.region_write_u32(0x0c, (features >> 32) as u32);
     }
 
     fn set_queue(&self, queue: u16) {
         // queue_select: 0x16
-        self.region.io_write_u16(0x16, queue);
+        // self.region_write_u16(0x16, queue);
+        self.region_write_u32(0x16, queue as u32);
     }
 
     fn get_queue_max_size(&self) -> u16 {
         // queue_size: 0x18
-        self.region.io_read_u16(0x18)
+        // self.region_read_u16(0x18)
+        (self.region_read_u32(0x18) & 0xffff) as u16
     }
 
     fn set_queue_size(&self, queue_size: u16) {
         // queue_size: 0x18
-        self.region.io_write_u16(0x18, queue_size);
+        // self.region_write_u16(0x18, queue_size);
+        self.region_write_u32(0x18, queue_size as u32);
     }
 
     fn set_descriptors_address(&self, addr: u64) {
         // queue_desc: 0x20
-        self.region.io_write_u64(0x20, addr);
+        self.region_write_u32(0x20, addr as u32);
+        self.region_write_u32(0x24, (addr >> 32) as u32);
     }
 
     fn set_avail_ring(&self, addr: u64) {
         // queue_avail: 0x28
-        self.region.io_write_u64(0x28, addr);
+        self.region_write_u32(0x28, addr as u32);
+        self.region_write_u32(0x2c, (addr >> 32) as u32);
     }
 
     fn set_used_ring(&self, addr: u64) {
-        // queue_used: 0x28
-        self.region.io_write_u64(0x30, addr);
+        // queue_used: 0x30
+        self.region_write_u32(0x30, addr as u32);
+        self.region_write_u32(0x34, (addr >> 32) as u32);
     }
 
     fn set_queue_enable(&self) {
         // queue_enable: 0x1c
-        self.region.io_write_u16(0x1c, 0x1);
+        self.region_write_u16(0x1c, 0x1);
+        // self.region_write_u32(0x1c, 0x1);
     }
 
     fn notify_queue(&self, queue: u16) {
         // queue_notify_off: 0x1e
-        let queue_notify_off = self.region.io_read_u16(0x1e);
+        let queue_notify_off = self.region_read_u16(0x1e);
+        // let queue_notify_off = self.region_read_u32(0x1e) & 0xffff;
 
-        self.notify_region.io_write_u32(
-            u64::from(queue_notify_off) * u64::from(self.notify_off_multiplier),
-            u32::from(queue),
-        );
+        let bar = self.notify_config_bar;
+        let offset =
+            self.notify_config_offset + u32::from(queue_notify_off) * self.notify_off_multiplier;
+        self.write_u32(bar, offset, u32::from(queue));
     }
 
     fn read_device_config(&self, offset: u64) -> u32 {
-        self.device_config_region.io_read_u32(offset)
+        let bar = self.device_config_bar;
+        let offset = self.device_config_offset + offset as u32;
+        self.read_u32(bar, offset)
     }
 }
