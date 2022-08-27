@@ -209,7 +209,30 @@ impl PciDevice {
             .read(self.bus, self.device, self.func, offset)
     }
 
-    fn init(&mut self) {
+    fn write_u8(&self, offset: u8, value: u8) {
+        let offset32 = offset & 0b1111_1100;
+        let shift32 = offset & 0b0000_0011;
+
+        let data = self.read_u32(offset32) | ((value as u32) << (shift32 * 8));
+        self.write_u32(offset32, data);
+    }
+
+    fn write_u16(&self, offset: u8, value: u16) {
+        assert_eq!(offset % 2, 0);
+        let offset32 = offset & 0b1111_1100;
+        let shift32 = offset & 0b0000_0011;
+
+        let data = self.read_u32(offset32) | ((value as u32) << (shift32 * 8));
+        self.write_u32(offset32, data);
+    }
+
+    fn write_u32(&self, offset: u8, value: u32) {
+        PCI_CONFIG
+            .borrow_mut()
+            .write(self.bus, self.device, self.func, offset, value);
+    }
+
+    pub fn init(&mut self) {
         let (vendor_id, device_id) = get_device_details(self.bus, self.device, self.func);
 
         self.vendor_id = vendor_id;
