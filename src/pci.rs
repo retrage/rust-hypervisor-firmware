@@ -506,13 +506,11 @@ impl VirtioTransport for VirtioPciTransport {
 
     fn get_status(&self) -> u32 {
         // device_status: 0x14
-        // u32::from(self.region_read_u8(0x14))
         self.region_read_u32(0x14)
     }
 
     fn set_status(&self, value: u32) {
         // device_status: 0x14
-        // self.region_write_u8(0x14, value as u8);
         self.region_write_u32(0x14, value);
     }
 
@@ -550,19 +548,16 @@ impl VirtioTransport for VirtioPciTransport {
 
     fn set_queue(&self, queue: u16) {
         // queue_select: 0x16
-        // self.region_write_u16(0x16, queue);
         self.region_write_u32(0x16, queue as u32);
     }
 
     fn get_queue_max_size(&self) -> u16 {
         // queue_size: 0x18
-        // self.region_read_u16(0x18)
         (self.region_read_u32(0x18) & 0xffff) as u16
     }
 
     fn set_queue_size(&self, queue_size: u16) {
         // queue_size: 0x18
-        // self.region_write_u16(0x18, queue_size);
         self.region_write_u32(0x18, queue_size as u32);
     }
 
@@ -587,13 +582,11 @@ impl VirtioTransport for VirtioPciTransport {
     fn set_queue_enable(&self) {
         // queue_enable: 0x1c
         self.region_write_u16(0x1c, 0x1);
-        // self.region_write_u32(0x1c, 0x1);
     }
 
     fn notify_queue(&self, queue: u16) {
         // queue_notify_off: 0x1e
         let queue_notify_off = self.region_read_u16(0x1e);
-        // let queue_notify_off = self.region_read_u32(0x1e) & 0xffff;
 
         let bar = self.notify_config_bar;
         let offset =
