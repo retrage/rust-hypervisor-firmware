@@ -36,6 +36,8 @@ use r_efi::{
 };
 
 use crate::boot;
+#[cfg(target_arch = "aarch64")]
+use crate::pl031;
 #[cfg(target_arch = "x86_64")]
 use crate::rtc;
 
@@ -237,7 +239,10 @@ pub fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Status {
         Err(()) => return Status::DEVICE_ERROR,
     };
     #[cfg(target_arch = "aarch64")]
-    let (year, month, day) = (0, 0, 0);
+    let (year, month, day) = match pl031::read_date() {
+        Ok((y, m, d)) => (y, m, d),
+        Err(()) => return Status::DEVICE_ERROR,
+    };
 
     #[cfg(target_arch = "x86_64")]
     let (hour, minute, second) = match rtc::read_time() {
@@ -245,7 +250,10 @@ pub fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Status {
         Err(()) => return Status::DEVICE_ERROR,
     };
     #[cfg(target_arch = "aarch64")]
-    let (hour, minute, second) = (0, 0, 0);
+    let (hour, minute, second) = match pl031::read_time() {
+        Ok((h, m, s)) => (h, m, s),
+        Err(()) => return Status::DEVICE_ERROR,
+    };
 
     unsafe {
         (*time).year = 2000 + year as u16;
