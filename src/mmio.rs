@@ -8,7 +8,6 @@ use crate::{
     virtio::{Error as VirtioError, VirtioTransport},
 };
 
-#[derive(Default)]
 pub struct VirtioMmioTransport {
     device: MmioDevice,
 }
@@ -17,7 +16,6 @@ impl VirtioMmioTransport {
     pub fn new(device: MmioDevice) -> Self {
         Self {
             device,
-            ..Default::default()
         }
     }
 }
