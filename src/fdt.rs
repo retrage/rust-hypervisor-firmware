@@ -178,7 +178,7 @@ impl StartInfo<'_> {
         const BUS_MASK: u32 = 0b11111111 << 16;
         const DEV_MASK: u32 = 0b11111 << 11;
         const FUNC_MASK: u32 = 0b111 << 8;
-        const REG_MASK: u32 = 0b11111111 << 0;
+        const REG_MASK: u32 = 0b11111111;
 
         if hi & RELOCATABLE != 0 {
             log!("relocatable");
@@ -194,7 +194,7 @@ impl StartInfo<'_> {
         let bus = (hi & BUS_MASK) >> 16;
         let dev = (hi & DEV_MASK) >> 11;
         let func = (hi & FUNC_MASK) >> 8;
-        let reg = (hi & REG_MASK) >> 0;
+        let reg = hi & REG_MASK;
 
         dbg!(space_code);
         dbg!(bus);
