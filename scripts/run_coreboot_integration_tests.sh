@@ -6,13 +6,15 @@ RHF_ROOT_DIR=$(cd "$(dirname "$0")/../" && pwd)
 source "${CARGO_HOME:-$HOME/.cargo}/env"
 source "$(dirnam "$0")/fetch_disk_images.sh"
 
+TARGET="x86_64-unknown-none.json"
+
 WORKLOADS_DIR="$HOME/workloads"
 mkdir -p "$WORKLOADS_DIR"
 
 fetch_disk_images "$WORKLOADS_DIR"
 
 rustup component add rust-src
-cargo build --release --target target.json -Zbuild-std=core,alloc -Zbuild-std-features=compiler-builtins-mem --features "coreboot"
+cargo build --release --target "$TARGET" -Zbuild-std=core,alloc -Zbuild-std-features=compiler-builtins-mem --features "coreboot"
 
 RHF_BIN="$RHF_ROOT_DIR/target/target/release/hypervisor-fw"
 COREBOOT_CONFIG_IN="$RHF_ROOT_DIR/resources/coreboot/qemu-q35-config.in"

@@ -4,6 +4,8 @@ set -x
 source "${CARGO_HOME:-$HOME/.cargo}/env"
 source $(dirname "$0")/fetch_disk_images.sh
 
+TARGET="x86_64-unknown-none.json"
+
 WORKLOADS_DIR="$HOME/workloads"
 mkdir -p "$WORKLOADS_DIR"
 
@@ -19,7 +21,7 @@ fi
 fetch_disk_images "$WORKLOADS_DIR"
 
 rustup component add rust-src
-cargo build --release --target target.json -Zbuild-std=core,alloc -Zbuild-std-features=compiler-builtins-mem
+cargo build --release --target "$TARGET" -Zbuild-std=core,alloc -Zbuild-std-features=compiler-builtins-mem
 
 export RUST_BACKTRACE=1
 time cargo test --features "integration_tests" "integration::tests::linux"

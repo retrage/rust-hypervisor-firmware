@@ -3,6 +3,8 @@ set -x
 
 source "${CARGO_HOME:-$HOME/.cargo}/env"
 
+TARGET="x86_64-unknown-none.json"
+
 WORKLOADS_DIR="$HOME/workloads"
 mkdir -p "$WORKLOADS_DIR"
 
@@ -32,7 +34,7 @@ dmsetup create windows-snapshot-base --table "0 $img_blk_size snapshot-origin /d
 dmsetup mknodes
 
 rustup component add rust-src
-cargo build --release --target target.json -Zbuild-std=core,alloc -Zbuild-std-features=compiler-builtins-mem
+cargo build --release --target "$TARGET" -Zbuild-std=core,alloc -Zbuild-std-features=compiler-builtins-mem
 
 export RUST_BACKTRACE=1
 time cargo test --features "integration_tests" "integration::tests::windows"
