@@ -410,6 +410,7 @@ impl Allocator {
         }
     }
 
+    #[allow(dead_code)]
     pub fn dump_allocations(&self) {
         for allocation in self.allocations {
             if allocation.in_use {
