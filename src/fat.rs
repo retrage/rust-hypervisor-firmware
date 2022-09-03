@@ -86,10 +86,12 @@ pub struct DirectoryEntry {
 }
 
 impl DirectoryEntry {
+    #[allow(dead_code)]
     pub fn long_name(&self) -> [u8; 255] {
         self.long_name
     }
 
+    #[allow(dead_code)]
     pub fn is_file(&self) -> bool {
         matches!(self.file_type, FileType::File)
     }
