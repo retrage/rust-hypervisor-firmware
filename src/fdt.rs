@@ -28,11 +28,7 @@ impl StartInfo<'_> {
         }
     }
 
-    fn get_raw_prop_with<'a, N, P>(
-        &'a self,
-        node_predicate: N,
-        prop_predicate: P,
-    ) -> Option<&'a [u8]>
+    fn get_raw_prop_with<N, P>(&'_ self, node_predicate: N, prop_predicate: P) -> Option<&[u8]>
     where
         N: Fn(&DevTreeNode) -> bool,
         P: Fn(&DevTreeProp) -> bool,
@@ -51,7 +47,7 @@ impl StartInfo<'_> {
         None
     }
 
-    fn get_memory_reg_raw_prop<'a>(&'a self) -> Option<&'a [u8]> {
+    fn get_memory_reg_raw_prop(&'_ self) -> Option<&[u8]> {
         self.get_raw_prop_with(
             |node| match node.name() {
                 Ok(name) => name.starts_with("memory@"),
@@ -78,7 +74,7 @@ impl StartInfo<'_> {
         num
     }
 
-    pub fn get_node_with<'a, N>(&'a self, idx: usize, node_predicate: N) -> Option<DevTreeNode>
+    pub fn get_node_with<N>(&'_ self, idx: usize, node_predicate: N) -> Option<DevTreeNode>
     where
         N: Fn(&DevTreeNode) -> bool,
     {
