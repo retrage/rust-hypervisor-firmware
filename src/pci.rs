@@ -15,7 +15,7 @@
 use atomic_refcell::AtomicRefCell;
 
 #[cfg(target_arch = "x86_64")]
-use x86_64::instructions::port::{PortReadOnly, PortWriteOnly};
+use x86_64::instructions::port::{Port, PortWriteOnly};
 
 use crate::virtio::{Error as VirtioError, VirtioTransport};
 
@@ -33,7 +33,7 @@ static PCI_CONFIG: AtomicRefCell<PciConfig> = AtomicRefCell::new(PciConfig::new(
 #[cfg(target_arch = "x86_64")]
 struct PciConfig {
     address_port: PortWriteOnly<u32>,
-    data_port: PortReadOnly<u32>,
+    data_port: Port<u32>,
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -47,7 +47,7 @@ impl PciConfig {
         // We use the legacy, port-based Configuration Access Mechanism (CAM).
         Self {
             address_port: PortWriteOnly::new(0xcf8),
-            data_port: PortReadOnly::new(0xcfc),
+            data_port: Port::new(0xcfc),
         }
     }
 
@@ -82,7 +82,10 @@ impl PciConfig {
     fn write(&mut self, bus: u8, device: u8, func: u8, offset: u8, value: u32) {
         let addr = Self::get_addr(bus, device, func, offset);
         let addr = addr | 1u32 << 31; // enable bit 31
-                                      // TODO: Add write support for x86_64
+        unsafe {
+            self.address_port.write(addr);
+            self.data_port.write(value);
+        }
     }
 
     #[cfg(target_arch = "aarch64")]
