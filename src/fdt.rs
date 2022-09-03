@@ -120,30 +120,30 @@ impl StartInfo<'_> {
     }
 
     fn get_u32_pair(node: &DevTreeNode, prop_name: &str) -> Option<(u32, u32)> {
-        type UINT = u32;
+        type Uint = u32;
         if let Some(prop) = Self::get_prop(node, prop_name) {
-            const BUF_LEN: usize = core::mem::size_of::<UINT>();
+            const BUF_LEN: usize = core::mem::size_of::<Uint>();
             let raw = prop.raw();
             let mut buf = [0_u8; BUF_LEN];
             buf.clone_from_slice(&raw[0..BUF_LEN]);
-            let base = UINT::from_be_bytes(buf);
+            let base = Uint::from_be_bytes(buf);
             buf.clone_from_slice(&raw[BUF_LEN..(BUF_LEN + BUF_LEN)]);
-            let size = UINT::from_be_bytes(buf);
+            let size = Uint::from_be_bytes(buf);
             return Some((base, size));
         }
         None
     }
 
     fn get_u64_pair(node: &DevTreeNode, prop_name: &str) -> Option<(u64, u64)> {
-        type UINT = u64;
+        type Uint = u64;
         if let Some(prop) = Self::get_prop(node, prop_name) {
-            const BUF_LEN: usize = core::mem::size_of::<UINT>();
+            const BUF_LEN: usize = core::mem::size_of::<Uint>();
             let raw = prop.raw();
             let mut buf = [0_u8; BUF_LEN];
             buf.clone_from_slice(&raw[0..BUF_LEN]);
-            let base = UINT::from_be_bytes(buf);
+            let base = Uint::from_be_bytes(buf);
             buf.clone_from_slice(&raw[BUF_LEN..(BUF_LEN + BUF_LEN)]);
-            let size = UINT::from_be_bytes(buf);
+            let size = Uint::from_be_bytes(buf);
             return Some((base, size));
         }
         None
