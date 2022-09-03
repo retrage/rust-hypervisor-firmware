@@ -385,6 +385,7 @@ impl VirtioPciTransport {
         self.read_u16(self.common_config_bar, self.common_config_offset + offset)
     }
 
+    #[allow(dead_code)]
     fn region_read_u8(&self, offset: u32) -> u8 {
         self.read_u8(self.common_config_bar, self.common_config_offset + offset)
     }
@@ -405,6 +406,7 @@ impl VirtioPciTransport {
         );
     }
 
+    #[allow(dead_code)]
     fn region_write_u8(&self, offset: u32, value: u8) {
         self.write_u8(
             self.common_config_bar,
