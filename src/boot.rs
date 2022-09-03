@@ -79,6 +79,7 @@ impl Default for Params {
 }
 
 impl Params {
+    #[allow(dead_code)]
     pub fn set_entries(&mut self, info: &dyn Info) {
         self.e820_entries = info.num_entries();
         for i in 0..self.e820_entries {
@@ -154,6 +155,7 @@ pub struct Header {
 
 impl Header {
     // Read a kernel header from the first two sectors of a file
+    #[allow(dead_code)]
     pub fn from_file(f: &mut dyn Read) -> Result<Self, Error> {
         let mut data: [u8; 1024] = [0; 1024];
         let mut region = MemoryRegion::from_bytes(&mut data);
