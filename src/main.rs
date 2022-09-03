@@ -42,7 +42,6 @@ mod boot;
 mod bzimage;
 #[cfg(target_arch = "x86_64")]
 mod coreboot;
-#[cfg(target_arch = "x86_64")]
 mod delay;
 mod efi;
 mod fat;

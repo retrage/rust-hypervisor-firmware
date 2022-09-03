@@ -841,7 +841,6 @@ pub fn get_next_monotonic_count(_: *mut u64) -> Status {
 
 eficall! {
 pub fn stall(microseconds: usize) -> Status {
-    #[cfg(target_arch = "x86_64")]
     crate::delay::udelay(microseconds as u64);
     Status::SUCCESS
 }
