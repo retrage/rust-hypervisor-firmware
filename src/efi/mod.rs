@@ -700,7 +700,7 @@ pub fn install_configuration_table(guid: *mut Guid, table: *mut c_void) -> Statu
     for entry in ct.iter_mut() {
         if entry.vendor_guid == unsafe { *guid } {
             entry.vendor_table = table;
-            if table == null_mut() {
+            if table.is_null() {
                 // Delete the table.
                 entry.vendor_guid = empty_guid;
                 entry.vendor_table = null_mut();
@@ -713,7 +713,7 @@ pub fn install_configuration_table(guid: *mut Guid, table: *mut c_void) -> Statu
     }
 
     // No matching table found.
-    if table == null_mut() {
+    if table.is_null() {
         // No table found, but trying to delete the table.
         return Status::NOT_FOUND;
     }
@@ -725,7 +725,7 @@ pub fn install_configuration_table(guid: *mut Guid, table: *mut c_void) -> Statu
     }
 
     for entry in ct.iter_mut() {
-        if entry.vendor_guid == empty_guid && entry.vendor_table == null_mut() {
+        if entry.vendor_guid == empty_guid && entry.vendor_table.is_null() {
             entry.vendor_guid = unsafe { *guid };
             entry.vendor_table = table;
             st.number_of_table_entries += 1;
