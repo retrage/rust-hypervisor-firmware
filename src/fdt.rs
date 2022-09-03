@@ -60,6 +60,7 @@ impl StartInfo<'_> {
         )
     }
 
+    #[allow(dead_code)]
     pub fn get_num_nodes_with<N>(&self, node_predicate: N) -> usize
     where
         N: Fn(&DevTreeNode) -> bool,
