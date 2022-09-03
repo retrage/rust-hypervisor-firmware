@@ -14,9 +14,7 @@ pub struct VirtioMmioTransport {
 
 impl VirtioMmioTransport {
     pub fn new(device: MmioDevice) -> Self {
-        Self {
-            device,
-        }
+        Self { device }
     }
 }
 
