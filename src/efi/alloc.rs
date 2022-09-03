@@ -409,6 +409,24 @@ impl Allocator {
             first_allocation: None,
         }
     }
+
+    pub fn dump_allocations(&self) {
+        for allocation in self.allocations {
+            if allocation.in_use {
+                log!("descriptor:");
+                log!("  type: {:#x}", allocation.descriptor.r#type);
+                log!(
+                    "  physical_start: {:#x}",
+                    allocation.descriptor.physical_start
+                );
+                log!(
+                    "  number_of_pages: {:#x}",
+                    allocation.descriptor.number_of_pages
+                );
+                log!("  attribute: {:#x}", allocation.descriptor.attribute);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
