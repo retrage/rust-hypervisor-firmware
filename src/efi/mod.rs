@@ -1301,6 +1301,34 @@ pub fn efi_exec(
         address,
     );
 
+    /*
+    {
+        let mut var_name = [0_u16; 64];
+        crate::common::ascii_to_ucs2("SHIM_VERBOSE", &mut var_name);
+        let mut data = [1_u8; 1];
+        set_variable(
+            &mut var_name as *mut _,
+            &mut SHIM_LOCK_PROTOCOL_GUID as *mut _,
+            efi::VARIABLE_BOOTSERVICE_ACCESS,
+            1,
+            &mut data as *mut _ as *mut c_void);
+    }
+    */
+
+    /*
+    {
+        let mut var_name = [0_u16; 64];
+        crate::common::ascii_to_ucs2("SHIM_DEBUG", &mut var_name);
+        let mut data = [1_u8; 1];
+        set_variable(
+            &mut var_name as *mut _,
+            &mut SHIM_LOCK_PROTOCOL_GUID as *mut _,
+            efi::VARIABLE_BOOTSERVICE_ACCESS,
+            1,
+            &mut data as *mut _ as *mut c_void);
+    }
+    */
+
     let ptr = address as *const ();
     let code: eficall! { fn(Handle, *mut efi::SystemTable) -> Status } =
         unsafe { core::mem::transmute(ptr) };
