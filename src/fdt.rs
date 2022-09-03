@@ -202,6 +202,7 @@ impl StartInfo<'_> {
         dbg!(address);
     }
 
+    #[allow(dead_code)]
     pub fn dump_pcie_node(&self) {
         let node = self
             .get_node_with(0, |node| {
