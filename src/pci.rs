@@ -97,10 +97,11 @@ impl PciConfig {
         assert!(device < MAX_DEVICES);
         assert!(func < MAX_FUNCTIONS);
 
-        let addr = u32::from(bus) << 16; // bus bits 23-16
-        let addr = addr | u32::from(device) << 11; // slot/device bits 15-11
-        let addr = addr | u32::from(func) << 8; // function bits 10-8
-        let addr = addr | u32::from(offset & 0xfc); // register 7-0
+        let mut addr = 0;
+        addr |= u32::from(bus) << 16; // bus bits 23-16
+        addr |= u32::from(device) << 11; // slot/device bits 15-11
+        addr |= u32::from(func) << 8; // function bits 10-8
+        addr |= u32::from(offset & 0xfc); // register 7-0
 
         addr
     }
