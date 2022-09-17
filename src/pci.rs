@@ -55,7 +55,8 @@ impl PciConfig {
     const fn new() -> Self {
         // We use Enhanced Configuration Access Mechanism (ECAM).
         Self {
-            region: mem::MemoryRegion::new(0x3f000000, 0x1000000),
+            // region: mem::MemoryRegion::new(0x3f000000, 0x1000000),
+            region: mem::MemoryRegion::new(0x30000000, 0x100000),
         }
     }
 

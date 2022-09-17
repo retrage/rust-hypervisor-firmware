@@ -2,7 +2,8 @@ ENTRY(aarch64_header)
 
 /* For booting as a QEMU kernel image */
 /* ram_min = 0x40080000; */
-ram_min = 0x0;
+/* For booting as a Cloud Hypervisor kernel image */
+ram_min = 0x40480000;
 
 SECTIONS
 {
@@ -28,7 +29,7 @@ SECTIONS
   }
 
   /* Our stack grows down and is page-aligned. TODO: Add stack guard pages. */
-  .stack : ALIGN(4K) { . = 0x4000000; }
+  .stack (NOLOAD) : ALIGN(4K) { . += 128K; }
   stack_start = .;
 
   /* Strip symbols from the output binary (comment out to get symbols) */
