@@ -17,10 +17,10 @@ use atomic_refcell::AtomicRefCell;
 #[cfg(target_arch = "x86_64")]
 use x86_64::instructions::port::{Port, PortWriteOnly};
 
-use crate::virtio::{Error as VirtioError, VirtioTransport};
-
-#[cfg(target_arch = "aarch64")]
-use crate::mem;
+use crate::{
+    mem,
+    virtio::{Error as VirtioError, VirtioTransport},
+};
 
 const MAX_BUSES: u8 = 8;
 const MAX_DEVICES: u8 = 32;
@@ -306,10 +306,9 @@ enum VirtioPciCapabilityType {
     PciConfig = 5,
 }
 
+#[cfg(feature = "virtio-pci-cfg")]
 #[derive(Default)]
-pub struct VirtioPciTransport {
-    device: PciDevice,
-    notify_off_multiplier: u32, // from notify config cap
+struct VirtioPciConfig {
     cap_pci_cfg: u8,
     common_config_bar: u8,
     common_config_offset: u32,
@@ -317,6 +316,17 @@ pub struct VirtioPciTransport {
     notify_config_offset: u32,
     device_config_bar: u8,
     device_config_offset: u32,
+}
+
+#[derive(Default)]
+pub struct VirtioPciTransport {
+    device: PciDevice,
+    region: mem::MemoryRegion,
+    notify_region: mem::MemoryRegion,
+    notify_off_multiplier: u32, // from notify config cap
+    device_config_region: mem::MemoryRegion,
+    #[cfg(feature = "virtio-pci-cfg")]
+    pci_config: VirtioPciConfig,
 }
 
 impl VirtioPciTransport {
@@ -327,96 +337,160 @@ impl VirtioPciTransport {
         }
     }
 
+    #[cfg(feature = "virtio-pci-cfg")]
     fn read_u32(&self, bar: u8, offset: u32) -> u32 {
-        assert_ne!(self.cap_pci_cfg, 0);
+        assert_ne!(self.pci_config.cap_pci_cfg, 0);
 
-        self.device.write_u8(self.cap_pci_cfg + 4, bar);
-        self.device.write_u32(self.cap_pci_cfg + 12, 4);
-        self.device.write_u32(self.cap_pci_cfg + 8, offset);
-        self.device.read_u32(self.cap_pci_cfg + 16)
+        self.device.write_u8(self.pci_config.cap_pci_cfg + 4, bar);
+        self.device.write_u32(self.pci_config.cap_pci_cfg + 12, 4);
+        self.device
+            .write_u32(self.pci_config.cap_pci_cfg + 8, offset);
+        self.device.read_u32(self.pci_config.cap_pci_cfg + 16)
     }
 
+    #[cfg(feature = "virtio-pci-cfg")]
     fn read_u16(&self, bar: u8, offset: u32) -> u16 {
-        assert_ne!(self.cap_pci_cfg, 0);
+        assert_ne!(self.pci_config.cap_pci_cfg, 0);
 
-        self.device.write_u8(self.cap_pci_cfg + 4, bar);
-        self.device.write_u32(self.cap_pci_cfg + 12, 2);
-        self.device.write_u32(self.cap_pci_cfg + 8, offset);
-        self.device.read_u16(self.cap_pci_cfg + 16)
+        self.device.write_u8(self.pci_config.cap_pci_cfg + 4, bar);
+        self.device.write_u32(self.pci_config.cap_pci_cfg + 12, 2);
+        self.device
+            .write_u32(self.pci_config.cap_pci_cfg + 8, offset);
+        self.device.read_u16(self.pci_config.cap_pci_cfg + 16)
     }
 
+    #[cfg(feature = "virtio-pci-cfg")]
     fn read_u8(&self, bar: u8, offset: u32) -> u8 {
-        assert_ne!(self.cap_pci_cfg, 0);
+        assert_ne!(self.pci_config.cap_pci_cfg, 0);
 
-        self.device.write_u8(self.cap_pci_cfg + 4, bar);
-        self.device.write_u32(self.cap_pci_cfg + 12, 1);
-        self.device.write_u32(self.cap_pci_cfg + 8, offset);
-        self.device.read_u8(self.cap_pci_cfg + 16)
+        self.device.write_u8(self.pci_config.cap_pci_cfg + 4, bar);
+        self.device.write_u32(self.pci_config.cap_pci_cfg + 12, 1);
+        self.device
+            .write_u32(self.pci_config.cap_pci_cfg + 8, offset);
+        self.device.read_u8(self.pci_config.cap_pci_cfg + 16)
     }
 
+    #[cfg(feature = "virtio-pci-cfg")]
     fn write_u32(&self, bar: u8, offset: u32, value: u32) {
-        assert_ne!(self.cap_pci_cfg, 0);
+        assert_ne!(self.pci_config.cap_pci_cfg, 0);
 
-        self.device.write_u8(self.cap_pci_cfg + 4, bar);
-        self.device.write_u32(self.cap_pci_cfg + 12, 4);
-        self.device.write_u32(self.cap_pci_cfg + 8, offset);
-        self.device.write_u32(self.cap_pci_cfg + 16, value);
+        self.device.write_u8(self.pci_config.cap_pci_cfg + 4, bar);
+        self.device.write_u32(self.pci_config.cap_pci_cfg + 12, 4);
+        self.device
+            .write_u32(self.pci_config.cap_pci_cfg + 8, offset);
+        self.device
+            .write_u32(self.pci_config.cap_pci_cfg + 16, value);
     }
 
+    #[cfg(feature = "virtio-pci-cfg")]
     fn write_u16(&self, bar: u8, offset: u32, value: u16) {
-        assert_ne!(self.cap_pci_cfg, 0);
+        assert_ne!(self.pci_config.cap_pci_cfg, 0);
 
-        self.device.write_u8(self.cap_pci_cfg + 4, bar);
-        self.device.write_u32(self.cap_pci_cfg + 12, 2);
-        self.device.write_u32(self.cap_pci_cfg + 8, offset);
-        self.device.write_u16(self.cap_pci_cfg + 16, value);
+        self.device.write_u8(self.pci_config.cap_pci_cfg + 4, bar);
+        self.device.write_u32(self.pci_config.cap_pci_cfg + 12, 2);
+        self.device
+            .write_u32(self.pci_config.cap_pci_cfg + 8, offset);
+        self.device
+            .write_u16(self.pci_config.cap_pci_cfg + 16, value);
     }
 
+    #[cfg(feature = "virtio-pci-cfg")]
     fn write_u8(&self, bar: u8, offset: u32, value: u8) {
-        assert_ne!(self.cap_pci_cfg, 0);
+        assert_ne!(self.pci_config.cap_pci_cfg, 0);
 
-        self.device.write_u8(self.cap_pci_cfg + 4, bar);
-        self.device.write_u32(self.cap_pci_cfg + 12, 1);
-        self.device.write_u32(self.cap_pci_cfg + 8, offset);
-        self.device.write_u8(self.cap_pci_cfg + 16, value);
+        self.device.write_u8(self.pci_config.cap_pci_cfg + 4, bar);
+        self.device.write_u32(self.pci_config.cap_pci_cfg + 12, 1);
+        self.device
+            .write_u32(self.pci_config.cap_pci_cfg + 8, offset);
+        self.device
+            .write_u8(self.pci_config.cap_pci_cfg + 16, value);
     }
 
+    #[cfg(feature = "virtio-pci-cfg")]
     fn region_read_u32(&self, offset: u32) -> u32 {
-        self.read_u32(self.common_config_bar, self.common_config_offset + offset)
+        self.read_u32(
+            self.pci_config.common_config_bar,
+            self.pci_config.common_config_offset + offset,
+        )
     }
 
+    #[cfg(not(feature = "virtio-pci-cfg"))]
+    fn region_read_u32(&self, offset: u32) -> u32 {
+        self.region.io_read_u32(offset as u64)
+    }
+
+    #[cfg(feature = "virtio-pci-cfg")]
     fn region_read_u16(&self, offset: u32) -> u16 {
-        self.read_u16(self.common_config_bar, self.common_config_offset + offset)
+        self.read_u16(
+            self.pci_config.common_config_bar,
+            self.pci_config.common_config_offset + offset,
+        )
+    }
+
+    #[cfg(not(feature = "virtio-pci-cfg"))]
+    fn region_read_u16(&self, offset: u32) -> u16 {
+        self.region.io_read_u16(offset as u64)
     }
 
     #[allow(dead_code)]
+    #[cfg(feature = "virtio-pci-cfg")]
     fn region_read_u8(&self, offset: u32) -> u8 {
-        self.read_u8(self.common_config_bar, self.common_config_offset + offset)
+        self.read_u8(
+            self.pci_config.common_config_bar,
+            self.pci_config.common_config_offset + offset,
+        )
     }
 
+    #[allow(dead_code)]
+    #[cfg(not(feature = "virtio-pci-cfg"))]
+    fn region_read_u8(&self, offset: u32) -> u8 {
+        self.region.io_read_u8(offset as u64)
+    }
+
+    #[cfg(feature = "virtio-pci-cfg")]
     fn region_write_u32(&self, offset: u32, value: u32) {
-        self.write_u32(
-            self.common_config_bar,
-            self.common_config_offset + offset,
-            value,
-        );
+            self.write_u32(
+                self.pci_config.common_config_bar,
+                self.pci_config.common_config_offset + offset,
+                value,
+            );
+            self.region.io_write_u32(offset as u64, value);
     }
 
+    #[cfg(not(feature = "virtio-pci-cfg"))]
+    fn region_write_u32(&self, offset: u32, value: u32) {
+        self.region.io_write_u32(offset as u64, value);
+    }
+
+    #[cfg(feature = "virtio-pci-cfg")]
     fn region_write_u16(&self, offset: u32, value: u16) {
         self.write_u16(
-            self.common_config_bar,
-            self.common_config_offset + offset,
+            self.pci_config.common_config_bar,
+            self.pci_config.common_config_offset + offset,
             value,
         );
     }
 
+    #[cfg(not(feature = "virtio-pci-cfg"))]
+    fn region_write_u16(&self, offset: u32, value: u16) {
+        self.region.io_write_u16(offset as u64, value);
+    }
+
+    #[cfg(feature = "virtio-pci-cfg")]
     #[allow(dead_code)]
     fn region_write_u8(&self, offset: u32, value: u8) {
         self.write_u8(
-            self.common_config_bar,
-            self.common_config_offset + offset,
+            self.pci_config.common_config_bar,
+            self.pci_config.common_config_offset + offset,
             value,
         );
+            self.region.io_write_u8(offset as u64, value);
+    }
+
+    #[cfg(not(feature = "virtio-pci-cfg"))]
+    #[allow(dead_code)]
+    fn region_write_u8(&self, offset: u32, value: u8) {
+        self.region.io_write_u8(offset as u64, value);
     }
 }
 // Common Configuration registers:
@@ -472,15 +546,32 @@ impl VirtioTransport for VirtioPciTransport {
                 #[allow(clippy::blacklisted_name)]
                 let bar = self.device.read_u8(cap_next + 4);
                 let offset = self.device.read_u32(cap_next + 8);
+                let length = self.device.read_u32(cap_next + 12);
 
                 if cfg_type == VirtioPciCapabilityType::CommonConfig as u8 {
-                    self.common_config_bar = bar;
-                    self.common_config_offset = offset;
+                    self.region = mem::MemoryRegion::new(
+                        self.device.bars[usize::from(bar)].address + u64::from(offset),
+                        u64::from(length),
+                    );
+
+                    #[cfg(feature = "virtio-pci-cfg")]
+                    {
+                        self.pci_config.common_config_bar = bar;
+                        self.pci_config.common_config_offset = offset;
+                    }
                 }
 
                 if cfg_type == VirtioPciCapabilityType::NotifyConfig as u8 {
-                    self.notify_config_bar = bar;
-                    self.notify_config_offset = offset;
+                    self.notify_region = mem::MemoryRegion::new(
+                        self.device.bars[usize::from(bar)].address + u64::from(offset),
+                        u64::from(length),
+                    );
+
+                    #[cfg(feature = "virtio-pci-cfg")]
+                    {
+                        self.pci_config.notify_config_bar = bar;
+                        self.pci_config.notify_config_offset = offset;
+                    }
 
                     // struct virtio_pci_notify_cap {
                     //         struct virtio_pci_cap cap;
@@ -490,16 +581,29 @@ impl VirtioTransport for VirtioPciTransport {
                 }
 
                 if cfg_type == VirtioPciCapabilityType::DeviceConfig as u8 {
-                    self.device_config_bar = bar;
-                    self.device_config_offset = offset;
+                    self.device_config_region = mem::MemoryRegion::new(
+                        self.device.bars[usize::from(bar)].address + u64::from(offset),
+                        u64::from(length),
+                    );
+
+                    #[cfg(feature = "virtio-pci-cfg")]
+                    {
+                        self.pci_config.device_config_bar = bar;
+                        self.pci_config.device_config_offset = offset;
+                    }
                 }
 
+                #[cfg(feature = "virtio-pci-cfg")]
                 if cfg_type == VirtioPciCapabilityType::PciConfig as u8 {
                     // struct virtio_pci_cfg_cap {
                     //     struct virtio_pci_cap cap;
                     //     u8 pci_cfg_data[4]; /* Data for BAR access. */
                     // };
-                    self.cap_pci_cfg = cap_next;
+
+                    #[cfg(feature = "virtio-pci-cfg")]
+                    {
+                        self.pci_config.cap_pci_cfg = cap_next;
+                    }
                 }
             }
             cap_next = self.device.read_u8(cap_next + 1)
@@ -510,12 +614,12 @@ impl VirtioTransport for VirtioPciTransport {
 
     fn get_status(&self) -> u32 {
         // device_status: 0x14
-        self.region_read_u32(0x14)
+        u32::from(self.region_read_u8(0x14))
     }
 
     fn set_status(&self, value: u32) {
         // device_status: 0x14
-        self.region_write_u32(0x14, value);
+        self.region_write_u8(0x14, value as u8);
     }
 
     fn add_status(&self, value: u32) {
@@ -552,17 +656,17 @@ impl VirtioTransport for VirtioPciTransport {
 
     fn set_queue(&self, queue: u16) {
         // queue_select: 0x16
-        self.region_write_u32(0x16, queue as u32);
+        self.region_write_u16(0x16, queue);
     }
 
     fn get_queue_max_size(&self) -> u16 {
         // queue_size: 0x18
-        (self.region_read_u32(0x18) & 0xffff) as u16
+        self.region_read_u16(0x18)
     }
 
     fn set_queue_size(&self, queue_size: u16) {
         // queue_size: 0x18
-        self.region_write_u32(0x18, queue_size as u32);
+        self.region_write_u16(0x18, queue_size);
     }
 
     fn set_descriptors_address(&self, addr: u64) {
@@ -592,15 +696,34 @@ impl VirtioTransport for VirtioPciTransport {
         // queue_notify_off: 0x1e
         let queue_notify_off = self.region_read_u16(0x1e);
 
-        let bar = self.notify_config_bar;
-        let offset =
-            self.notify_config_offset + u32::from(queue_notify_off) * self.notify_off_multiplier;
-        self.write_u32(bar, offset, u32::from(queue));
+        #[cfg(feature = "virtio-pci-cfg")]
+        {
+            let bar = self.pci_config.notify_config_bar;
+            let offset = self.pci_config.notify_config_offset
+                + u32::from(queue_notify_off) * self.notify_off_multiplier;
+            self.write_u32(bar, offset, u32::from(queue));
+        }
+
+        #[cfg(not(feature = "virtio-pci-cfg"))]
+        {
+            self.notify_region.io_write_u32(
+                u64::from(queue_notify_off) * u64::from(self.notify_off_multiplier),
+                u32::from(queue),
+            );
+        }
     }
 
     fn read_device_config(&self, offset: u64) -> u32 {
-        let bar = self.device_config_bar;
-        let offset = self.device_config_offset + offset as u32;
-        self.read_u32(bar, offset)
+        #[cfg(feature = "virtio-pci-cfg")]
+        {
+            let bar = self.pci_config.device_config_bar;
+            let offset = self.pci_config.device_config_offset + offset as u32;
+            self.read_u32(bar, offset)
+        }
+
+        #[cfg(not(feature = "virtio-pci-cfg"))]
+        {
+            self.device_config_region.io_read_u32(offset)
+        }
     }
 }
