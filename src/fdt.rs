@@ -6,7 +6,10 @@ use fdt_rs::{
     prelude::PropReader,
 };
 
-use crate::boot::{E820Entry, Info};
+use crate::{
+    boot::{E820Entry, Info},
+    mem::MemoryRegion,
+};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -240,6 +243,17 @@ impl StartInfo<'_> {
             dbg!(parent_bus_addr);
             dbg!(length);
         }
+    }
+
+    pub fn pci_cfg_region(&self) -> Option<MemoryRegion> {
+        let node = self.get_node_with(0, |node| {
+            if let Ok(name) = node.name() {
+                return name.starts_with("pcie@");
+            }
+            false
+        })?;
+        let (base, length) = Self::get_u64_pair(&node, "reg")?;
+        Some(MemoryRegion::new(base, length))
     }
 }
 

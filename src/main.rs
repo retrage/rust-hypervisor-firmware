@@ -195,6 +195,10 @@ pub extern "C" fn rust64_start(x0: *const u8) -> ! {
 
     let info = fdt::StartInfo::new(x0);
 
+    if let Some(region) = info.pci_cfg_region() {
+        pci::init(region);
+    }
+
     main(&info)
 }
 

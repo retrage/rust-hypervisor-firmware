@@ -55,8 +55,13 @@ impl PciConfig {
     const fn new() -> Self {
         // We use Enhanced Configuration Access Mechanism (ECAM).
         Self {
-            region: mem::MemoryRegion::new(0x3f000000, 0x1000000),
+            region: mem::MemoryRegion::new(0, 0),
         }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    pub fn init(&mut self, region: mem::MemoryRegion) {
+        self.region = region;
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -108,6 +113,11 @@ impl PciConfig {
 
         addr
     }
+}
+
+#[cfg(target_arch = "aarch64")]
+pub fn init(region: mem::MemoryRegion) {
+    PCI_CONFIG.borrow_mut().init(region);
 }
 
 fn get_device_details(bus: u8, device: u8, func: u8) -> (u16, u16) {
