@@ -83,22 +83,6 @@ impl PciConfig {
         self.region.io_read_u32(addr as u64)
     }
 
-    #[cfg(target_arch = "x86_64")]
-    fn write(&mut self, bus: u8, device: u8, func: u8, offset: u8, value: u32) {
-        let addr = Self::get_addr(bus, device, func, offset);
-        let addr = addr | 1u32 << 31; // enable bit 31
-        unsafe {
-            self.address_port.write(addr);
-            self.data_port.write(value);
-        }
-    }
-
-    #[cfg(target_arch = "aarch64")]
-    fn write(&mut self, bus: u8, device: u8, func: u8, offset: u8, value: u32) {
-        let addr = Self::get_addr(bus, device, func, offset);
-        self.region.io_write_u32(addr as u64, value);
-    }
-
     fn get_addr(bus: u8, device: u8, func: u8, offset: u8) -> u32 {
         assert_eq!(offset % 4, 0);
         assert!(bus < MAX_BUSES);
@@ -221,29 +205,6 @@ impl PciDevice {
         PCI_CONFIG
             .borrow_mut()
             .read(self.bus, self.device, self.func, offset)
-    }
-
-    fn write_u8(&self, offset: u8, value: u8) {
-        let offset32 = offset & 0b1111_1100;
-        let shift32 = offset & 0b0000_0011;
-
-        let data = self.read_u32(offset32) | ((value as u32) << (shift32 * 8));
-        self.write_u32(offset32, data);
-    }
-
-    fn write_u16(&self, offset: u8, value: u16) {
-        assert_eq!(offset % 2, 0);
-        let offset32 = offset & 0b1111_1100;
-        let shift32 = offset & 0b0000_0011;
-
-        let data = self.read_u32(offset32) | ((value as u32) << (shift32 * 8));
-        self.write_u32(offset32, data);
-    }
-
-    fn write_u32(&self, offset: u8, value: u32) {
-        PCI_CONFIG
-            .borrow_mut()
-            .write(self.bus, self.device, self.func, offset, value);
     }
 
     pub fn init(&mut self) {
