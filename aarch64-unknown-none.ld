@@ -1,7 +1,7 @@
 ENTRY(aarch64_header)
 
-/* For booting as a QEMU kernel image */
-ram_min = 0x40080000;
+/* For booting as a Cloud hypervisor kernel image */
+ram_min = 0x40480000;
 
 SECTIONS
 {
