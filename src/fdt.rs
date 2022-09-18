@@ -107,33 +107,6 @@ impl StartInfo<'_> {
         None
     }
 
-    fn get_u32(node: &DevTreeNode, prop_name: &str) -> Option<u32> {
-        if let Some(prop) = Self::get_prop(node, prop_name) {
-            const BUF_LEN: usize = core::mem::size_of::<u32>();
-            let raw = prop.raw();
-            let mut buf = [0_u8; BUF_LEN];
-            buf.clone_from_slice(&raw[0..BUF_LEN]);
-            let val = u32::from_be_bytes(buf);
-            return Some(val);
-        }
-        None
-    }
-
-    fn get_u32_pair(node: &DevTreeNode, prop_name: &str) -> Option<(u32, u32)> {
-        type Uint = u32;
-        if let Some(prop) = Self::get_prop(node, prop_name) {
-            const BUF_LEN: usize = core::mem::size_of::<Uint>();
-            let raw = prop.raw();
-            let mut buf = [0_u8; BUF_LEN];
-            buf.clone_from_slice(&raw[0..BUF_LEN]);
-            let base = Uint::from_be_bytes(buf);
-            buf.clone_from_slice(&raw[BUF_LEN..(BUF_LEN + BUF_LEN)]);
-            let size = Uint::from_be_bytes(buf);
-            return Some((base, size));
-        }
-        None
-    }
-
     fn get_u64_pair(node: &DevTreeNode, prop_name: &str) -> Option<(u64, u64)> {
         type Uint = u64;
         if let Some(prop) = Self::get_prop(node, prop_name) {
@@ -147,102 +120,6 @@ impl StartInfo<'_> {
             return Some((base, size));
         }
         None
-    }
-
-    fn get_cells(node: &DevTreeNode, prop_name: &str, cells: &mut [u32]) {
-        if let Some(prop) = Self::get_prop(node, prop_name) {
-            const BUF_LEN: usize = core::mem::size_of::<u32>();
-            let raw = prop.raw();
-            dbg!(raw.len());
-            for (idx, cell) in cells.iter_mut().enumerate() {
-                let mut buf = [0_u8; BUF_LEN];
-                buf.clone_from_slice(&raw[(BUF_LEN * idx)..(BUF_LEN * idx + BUF_LEN)]);
-                *cell = u32::from_be_bytes(buf);
-            }
-        }
-    }
-
-    fn parse_pcie_child_bus_addr(addr: &[u32]) {
-        if addr.len() != 3 {
-            return;
-        }
-        let hi = addr[0];
-        let mid = addr[1];
-        let low = addr[2];
-
-        const RELOCATABLE: u32 = 1 << 31;
-        const PREFETCHABLE: u32 = 1 << 30;
-        const ALIASED: u32 = 1 << 29;
-
-        const SPACE_CODE_MASK: u32 = 0b11 << 24;
-        const BUS_MASK: u32 = 0b11111111 << 16;
-        const DEV_MASK: u32 = 0b11111 << 11;
-        const FUNC_MASK: u32 = 0b111 << 8;
-        const REG_MASK: u32 = 0b11111111;
-
-        if hi & RELOCATABLE != 0 {
-            log!("relocatable");
-        }
-        if hi & PREFETCHABLE != 0 {
-            log!("prefetchable");
-        }
-        if hi & ALIASED != 0 {
-            log!("aliased");
-        }
-
-        let space_code = (hi & SPACE_CODE_MASK) >> 24;
-        let bus = (hi & BUS_MASK) >> 16;
-        let dev = (hi & DEV_MASK) >> 11;
-        let func = (hi & FUNC_MASK) >> 8;
-        let reg = hi & REG_MASK;
-
-        dbg!(space_code);
-        dbg!(bus);
-        dbg!(dev);
-        dbg!(func);
-        dbg!(reg);
-
-        let address = (mid as u64) << 32 | (low as u64);
-        dbg!(address);
-    }
-
-    #[allow(dead_code)]
-    pub fn dump_pcie_node(&self) {
-        let node = self
-            .get_node_with(0, |node| {
-                if let Ok(name) = node.name() {
-                    return name.starts_with("pcie@");
-                }
-                false
-            })
-            .unwrap();
-
-        let (reg_base, reg_size) = Self::get_u64_pair(&node, "reg").unwrap();
-        let (bus_min, bus_max) = Self::get_u32_pair(&node, "bus-range").unwrap();
-        let address_cells = Self::get_u32(&node, "#address-cells").unwrap() as usize;
-        let size_cells = Self::get_u32(&node, "#size-cells").unwrap() as usize;
-        dbg!(reg_base, reg_size);
-        dbg!(bus_min, bus_max);
-        dbg!(address_cells);
-        dbg!(size_cells);
-
-        let range_cells = address_cells + 2 + size_cells;
-        let mut ranges = [0_u32; 3 * (3 + 2 + 2)];
-        Self::get_cells(&node, "ranges", &mut ranges);
-        for idx in (0..ranges.len()).step_by(range_cells) {
-            let child_bus_addr = &ranges[idx..(idx + address_cells)];
-            let parent_bus_addr = &ranges[(idx + address_cells)..(idx + address_cells + 2)];
-            let length = &ranges[(idx + address_cells + 2)..(idx + address_cells + 2 + size_cells)];
-
-            dbg!();
-            Self::parse_pcie_child_bus_addr(child_bus_addr);
-            let parent_bus_addr = (parent_bus_addr[0] as u64) << 32 | (parent_bus_addr[1] as u64);
-            let length = (length[0] as u64) << 32 | (length[1] as u64);
-
-            // dbg!(child_bus_addr);
-            dbg!(parent_bus_addr);
-            dbg!(length);
-        }
     }
 
     pub fn pci_cfg_region(&self) -> Option<MemoryRegion> {
