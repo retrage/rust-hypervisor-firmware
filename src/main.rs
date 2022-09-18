@@ -59,8 +59,8 @@ mod mem;
 mod mmio;
 #[cfg(target_arch = "x86_64")]
 mod paging;
-// #[cfg(target_arch = "aarch64")]
-// mod aarch64_paging;
+#[cfg(target_arch = "aarch64")]
+mod aarch64_paging;
 mod part;
 mod pci;
 mod pe;
@@ -196,7 +196,6 @@ pub extern "C" fn rust64_start(#[cfg(not(feature = "coreboot"))] rdi: &pvh::Star
 pub extern "C" fn rust64_start(x0: *const u8) -> ! {
     serial::PORT.borrow_mut().init();
 
-    /*
     use crate::aarch64_paging::interface::MMU;
 
     unsafe {
@@ -204,7 +203,6 @@ pub extern "C" fn rust64_start(x0: *const u8) -> ! {
             panic!("MMU: {:?}", e);
         }
     }
-    */
 
     let info = fdt::StartInfo::new(x0);
 

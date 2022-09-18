@@ -34,9 +34,9 @@ aarch64_start:
   ldr x0, =0x40000000
 
   /* setup stack */
-  // ldr x30, =0x40080000
+  ldr x30, =0x40080000
   // ldr x30, =0x4009c000
-  ldr x30, =stack_start
+  // ldr x30, =stack_start
   mov sp, x30
 
   /* x0: pointer to device tree */
