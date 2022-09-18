@@ -24,7 +24,6 @@ log-panic = ["log-serial"]
 integration_tests = []
 coreboot = []
 efi-var = []
-virtio-pci-cfg = []
 
 [dependencies]
 bitflags = "1.3.2"
