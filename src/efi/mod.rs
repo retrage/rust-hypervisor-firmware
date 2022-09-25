@@ -1087,6 +1087,14 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
     assert!(text_start % PAGE_SIZE == 0);
     assert!(text_end % PAGE_SIZE == 0);
 
+    #[cfg(target_arch = "aarch64")]
+    ALLOCATOR.borrow_mut().allocate_pages(
+        efi::ALLOCATE_ADDRESS,
+        efi::UNUSABLE_MEMORY,
+        (0x40400000 - 0x40000000) / PAGE_SIZE,
+        0x40000000,
+    );
+
     // Add ourselves
     if text_start - ram_min > 0 {
         ALLOCATOR.borrow_mut().allocate_pages(
