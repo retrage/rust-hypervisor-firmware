@@ -14,16 +14,18 @@ aarch64_header:
 
   .quad 0 /* image offset from start of ram (unused) */
   .quad 0 /* image size (unused) */
-  .quad 0
-  .quad 0
-  .quad 0
-  .quad 0
+  .quad 0 /* flags */
+  .quad 0 /* res2 */
+  .quad 0 /* res3 */
+  .quad 0 /* res4 */
+  /* .long 0 */ /* magic */
 
   /* arm64 magic number */
   .byte 'A'
   .byte 'R'
   .byte 'M'
   .byte 0x64
+  .long 0 /* res5 */
   .align 3
 
 aarch64_start:
