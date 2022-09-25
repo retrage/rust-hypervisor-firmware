@@ -165,6 +165,9 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn boot::Info
             return false;
         }
     };
+    log!("entry_addr: {:#x}", entry_addr);
+    log!("load_addr: {:#x}", load_addr);
+    log!("size: {:#x}", size);
 
     log!("Executable loaded");
     efi::efi_exec(entry_addr, load_addr, size, info, &f, device);

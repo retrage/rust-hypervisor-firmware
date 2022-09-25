@@ -223,12 +223,14 @@ unsafe fn fixup_at_virtual(descriptors: &[alloc::MemoryDescriptor]) {
 
 eficall! {
 pub fn not_available() -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
 
 eficall! {
 pub fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Status {
+    dbg!();
     if time.is_null() {
         return Status::INVALID_PARAMETER;
     }
@@ -273,18 +275,21 @@ pub fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Status {
 
 eficall! {
 pub fn set_time(_: *mut Time) -> Status {
+    dbg!();
     Status::DEVICE_ERROR
 }
 }
 
 eficall! {
 pub fn get_wakeup_time(_: *mut Boolean, _: *mut Boolean, _: *mut Time) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
 
 eficall! {
 pub fn set_wakeup_time(_: Boolean, _: *mut Time) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
@@ -296,6 +301,7 @@ pub fn set_virtual_address_map(
     version: u32,
     descriptors: *mut MemoryDescriptor,
 ) -> Status {
+    dbg!();
     let count = map_size / descriptor_size;
 
     if version != efi::MEMORY_DESCRIPTOR_VERSION {
@@ -316,6 +322,7 @@ pub fn set_virtual_address_map(
 
 eficall! {
 pub fn convert_pointer(_: usize, _: *mut *mut c_void) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
@@ -329,6 +336,11 @@ pub fn get_variable(
     data: *mut c_void,
 ) -> Status {
     if cfg!(feature = "efi-var") {
+        let mut var_name = [0_u8; 512];
+        crate::common::ucs2_to_ascii(variable_name, &mut var_name);
+        let var_str = crate::common::ascii_strip(&var_name);
+        dbg!(var_str);
+
         VARIABLES
             .borrow_mut()
             .get(variable_name, vendor_guid, attributes, data_size, data)
@@ -344,6 +356,7 @@ pub fn get_next_variable_name(
     _: *mut Char16,
     _: *mut Guid,
 ) -> Status {
+    dbg!();
     Status::NOT_FOUND
 }
 }
@@ -357,6 +370,11 @@ pub fn set_variable(
     data: *mut c_void,
 ) -> Status {
     if cfg!(feature = "efi-var") {
+        let mut var_name = [0_u8; 512];
+        crate::common::ucs2_to_ascii(variable_name, &mut var_name);
+        let var_str = crate::common::ascii_strip(&var_name);
+        dbg!(var_str);
+
         VARIABLES
             .borrow_mut()
             .set(variable_name, vendor_guid, attributes, data_size, data)
@@ -368,12 +386,14 @@ pub fn set_variable(
 
 eficall! {
 pub fn get_next_high_mono_count(_: *mut u32) -> Status {
+    dbg!();
     Status::DEVICE_ERROR
 }
 }
 
 eficall! {
 pub fn reset_system(_: ResetType, _: Status, _: usize, _: *mut c_void) {
+    log!("reset_system");
     // Don't do anything to force the kernel to use ACPI for shutdown and triple-fault for reset
 }
 }
@@ -384,6 +404,7 @@ pub fn update_capsule(
     _: usize,
     _: PhysicalAddress,
 ) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
@@ -395,6 +416,7 @@ pub fn query_capsule_capabilities(
     _: *mut u64,
     _: *mut ResetType,
 ) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
@@ -406,6 +428,7 @@ pub fn query_variable_info(
     remaining_storage: *mut u64,
     max_size: *mut u64,
 ) -> Status {
+    dbg!();
     unsafe {
         *max_storage = 0;
         *remaining_storage = 0;
@@ -417,12 +440,15 @@ pub fn query_variable_info(
 
 eficall! {
 pub fn raise_tpl(_: Tpl) -> Tpl {
+    dbg!();
     0
 }
 }
 
 eficall! {
-pub fn restore_tpl(_: Tpl) {}
+pub fn restore_tpl(_: Tpl) {
+    dbg!();
+}
 }
 
 eficall! {
@@ -432,6 +458,7 @@ pub fn allocate_pages(
     pages: usize,
     address: *mut PhysicalAddress,
 ) -> Status {
+    dbg!();
     let (status, new_address) =
         ALLOCATOR
             .borrow_mut()
@@ -452,6 +479,7 @@ pub fn allocate_pages(
 
 eficall! {
 pub fn free_pages(address: PhysicalAddress, _: usize) -> Status {
+    dbg!();
     ALLOCATOR.borrow_mut().free_pages(address)
 }
 }
@@ -464,6 +492,7 @@ pub fn get_memory_map(
     descriptor_size: *mut usize,
     descriptor_version: *mut u32,
 ) -> Status {
+    dbg!();
     if memory_map_size.is_null() {
         return Status::INVALID_PARAMETER;
     }
@@ -512,6 +541,7 @@ pub fn allocate_pool(
     size: usize,
     address: *mut *mut c_void,
 ) -> Status {
+    dbg!();
     let (status, new_address) = ALLOCATOR.borrow_mut().allocate_pages(
         efi::ALLOCATE_ANY_PAGES,
         memory_type,
@@ -531,6 +561,7 @@ pub fn allocate_pool(
 
 eficall! {
 pub fn free_pool(ptr: *mut c_void) -> Status {
+    dbg!();
     ALLOCATOR.borrow_mut().free_pages(ptr as u64)
 }
 }
@@ -543,6 +574,7 @@ pub fn create_event(
     _: *mut c_void,
     _: *mut Event,
 ) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
@@ -555,24 +587,28 @@ pub fn set_timer(_: Event, _: TimerDelay, _: u64) -> Status {
 
 eficall! {
 pub fn wait_for_event(_: usize, _: *mut Event, _: *mut usize) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
 
 eficall! {
 pub fn signal_event(_: Event) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
 
 eficall! {
 pub fn close_event(_: Event) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
 
 eficall! {
 pub fn check_event(_: Event) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
@@ -586,6 +622,15 @@ const SHIM_LOCK_PROTOCOL_GUID: Guid = Guid::from_fields(
     &[0x3d, 0xd8, 0x10, 0xdd, 0x8b, 0x23],
 );
 
+const GLOBAL_VARIABLE_GUID: Guid = Guid::from_fields(
+    0x8BE4_DF61,
+    0x93CA,
+    0x11d2,
+    0xaa,
+    0x0d,
+    &[0x00, 0xe0, 0x98, 0x03, 0x2b, 0x8c],
+);
+
 eficall! {
 pub fn install_protocol_interface(
     _: *mut Handle,
@@ -593,6 +638,7 @@ pub fn install_protocol_interface(
     _: InterfaceType,
     _: *mut c_void,
 ) -> Status {
+    dbg!();
     if unsafe { *guid } == SHIM_LOCK_PROTOCOL_GUID {
         Status::SUCCESS
     } else {
@@ -608,6 +654,7 @@ pub fn reinstall_protocol_interface(
     _: *mut c_void,
     _: *mut c_void,
 ) -> Status {
+    dbg!();
     Status::NOT_FOUND
 }
 }
@@ -618,6 +665,7 @@ pub fn uninstall_protocol_interface(
     _: *mut Guid,
     _: *mut c_void,
 ) -> Status {
+    dbg!();
     Status::NOT_FOUND
 }
 }
@@ -628,6 +676,12 @@ pub fn handle_protocol(
     guid: *mut Guid,
     out: *mut *mut c_void,
 ) -> Status {
+    dbg!();
+    unsafe {
+        loop {
+            core::arch::asm!("yield");
+        }
+    }
     open_protocol(handle, guid, out, null_mut(), null_mut(), 0)
 }
 }
@@ -638,6 +692,7 @@ pub fn register_protocol_notify(
     _: Event,
     _: *mut *mut c_void,
 ) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
@@ -650,10 +705,12 @@ pub fn locate_handle(
     size: *mut usize,
     handles: *mut Handle,
 ) -> Status {
+    dbg!();
     if unsafe { *guid } == block::PROTOCOL_GUID {
         let count = unsafe { BLOCK_WRAPPERS.count };
         if unsafe { *size } < size_of::<Handle>() * count {
             unsafe { *size = size_of::<Handle>() * count };
+            dbg!();
             return Status::BUFFER_TOO_SMALL;
         }
 
@@ -672,10 +729,12 @@ pub fn locate_handle(
 
         unsafe { *size = size_of::<Handle>() * count };
 
+        dbg!();
         return Status::SUCCESS;
     }
 
-    Status::UNSUPPORTED
+    dbg!();
+    Status::NOT_FOUND
 }
 }
 
@@ -685,12 +744,14 @@ pub fn locate_device_path(
     _: *mut *mut DevicePathProtocol,
     _: *mut *mut c_void,
 ) -> Status {
+    dbg!();
     Status::NOT_FOUND
 }
 }
 
 eficall! {
 pub fn install_configuration_table(guid: *mut Guid, table: *mut c_void) -> Status {
+    dbg!();
     let st = unsafe { &mut ST };
     let ct = unsafe { core::slice::from_raw_parts_mut(st.configuration_table, 8) };
 
@@ -747,6 +808,7 @@ pub fn load_image(
     _source_size: usize,
     image_handle: *mut Handle,
 ) -> Status {
+    dbg!();
     use crate::fat::Read;
 
     let mut path = [0_u8; 256];
@@ -806,6 +868,7 @@ pub fn start_image(
     _: *mut usize,
     _: *mut *mut Char16,
 ) -> Status {
+    dbg!();
     let wrapped_handle = image_handle as *const LoadedImageWrapper;
     let address = unsafe { (*wrapped_handle).entry_point };
     let ptr = address as *const ();
@@ -817,30 +880,35 @@ pub fn start_image(
 
 eficall! {
 pub fn exit(_: Handle, _: Status, _: usize, _: *mut Char16) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
 
 eficall! {
 pub fn unload_image(_: Handle) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
 
 eficall! {
 pub fn exit_boot_services(_: Handle, _: usize) -> Status {
+    dbg!();
     Status::SUCCESS
 }
 }
 
 eficall! {
 pub fn get_next_monotonic_count(_: *mut u64) -> Status {
+    dbg!();
     Status::DEVICE_ERROR
 }
 }
 
 eficall! {
 pub fn stall(microseconds: usize) -> Status {
+    dbg!();
     crate::delay::udelay(microseconds as u64);
     Status::SUCCESS
 }
@@ -848,6 +916,7 @@ pub fn stall(microseconds: usize) -> Status {
 
 eficall! {
 pub fn set_watchdog_timer(_: usize, _: u64, _: usize, _: *mut Char16) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
@@ -859,12 +928,14 @@ pub fn connect_controller(
     _: *mut DevicePathProtocol,
     _: Boolean,
 ) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
 
 eficall! {
 pub fn disconnect_controller(_: Handle, _: Handle, _: Handle) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
@@ -878,6 +949,7 @@ pub fn open_protocol(
     _: Handle,
     _: u32,
 ) -> Status {
+    dbg!();
     let hw = handle as *const HandleWrapper;
     let handle_type = unsafe { (*hw).handle_type };
     if unsafe { *guid } == r_efi::protocols::loaded_image::PROTOCOL_GUID
@@ -936,6 +1008,7 @@ pub fn open_protocol(
 
 eficall! {
 pub fn close_protocol(_: Handle, _: *mut Guid, _: Handle, _: Handle) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
@@ -947,6 +1020,7 @@ pub fn open_protocol_information(
     _: *mut *mut OpenProtocolInformationEntry,
     _: *mut usize,
 ) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
@@ -957,6 +1031,7 @@ pub fn protocols_per_handle(
     _: *mut *mut *mut Guid,
     _: *mut usize,
 ) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
@@ -969,16 +1044,18 @@ pub fn locate_handle_buffer(
     _: *mut usize,
     _: *mut *mut Handle,
 ) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
 
 eficall! {
 pub fn locate_protocol(
-    _: *mut Guid,
+    guid: *mut Guid,
     _: *mut c_void,
     _: *mut *mut c_void,
 ) -> Status {
+    dbg!();
     // XXX: A recent version of Linux kernel fails to boot if EFI_UNSUPPORTED returned.
     Status::NOT_FOUND
 }
@@ -990,6 +1067,7 @@ pub fn install_multiple_protocol_interfaces(
     _: *mut c_void,
     _: *mut c_void,
 ) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
@@ -1000,22 +1078,28 @@ pub fn uninstall_multiple_protocol_interfaces(
     _: *mut c_void,
     _: *mut c_void,
 ) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
 
 eficall! {
 pub fn calculate_crc32(_: *mut c_void, _: usize, _: *mut u32) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
 
 eficall! {
-pub fn copy_mem(_: *mut c_void, _: *mut c_void, _: usize) {}
+pub fn copy_mem(_: *mut c_void, _: *mut c_void, _: usize) {
+    dbg!();
+}
 }
 
 eficall! {
-pub fn set_mem(_: *mut c_void, _: usize, _: u8) {}
+pub fn set_mem(_: *mut c_void, _: usize, _: u8) {
+    dbg!();
+}
 }
 
 eficall! {
@@ -1027,12 +1111,14 @@ pub fn create_event_ex(
     _: *const Guid,
     _: *mut Event,
 ) -> Status {
+    dbg!();
     Status::UNSUPPORTED
 }
 }
 
 eficall! {
 pub fn image_unload(_: Handle) -> Status {
+    dbg!();
     efi::Status::UNSUPPORTED
 }
 }
@@ -1086,6 +1172,10 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
     assert!(ram_min % PAGE_SIZE == 0);
     assert!(text_start % PAGE_SIZE == 0);
     assert!(text_end % PAGE_SIZE == 0);
+
+    log!("ram_min: {:#x}", ram_min);
+    log!("text_start: {:#x}", text_start);
+    log!("text_end: {:#x}", text_end);
 
     #[cfg(target_arch = "aarch64")]
     ALLOCATOR.borrow_mut().allocate_pages(
@@ -1263,6 +1353,19 @@ pub fn efi_exec(
             ),
             vendor_table: acpi_rsdp_ptr as *mut _,
         }
+        /*
+        efi::ConfigurationTable {
+            vendor_guid: Guid::from_fields(
+                0x8868_e871,
+                0xe4f1,
+                0x11d3,
+                0xbc,
+                0x22,
+                &[0x00, 0x80, 0xc7, 0x3c, 0x88, 0x81],
+            ),
+            vendor_table: acpi_rsdp_ptr as *mut _,
+        }
+        */
     } else {
         efi::ConfigurationTable {
             vendor_guid: Guid::from_fields(
@@ -1340,6 +1443,46 @@ pub fn efi_exec(
             &mut data as *mut _ as *mut c_void);
     }
     */
+
+    /*
+    {
+        let mut var_name = [0_u16; 64];
+        crate::common::ascii_to_ucs2("SecureBoot", &mut var_name);
+        let mut data = [0_u8; 1];
+        set_variable(
+            &mut var_name as *mut _,
+            &mut GLOBAL_VARIABLE_GUID as *mut _,
+            efi::VARIABLE_BOOTSERVICE_ACCESS | efi::VARIABLE_RUNTIME_ACCESS,
+            1,
+            &mut data as *mut _ as *mut c_void);
+    }
+
+    {
+        let mut var_name = [0_u16; 64];
+        crate::common::ascii_to_ucs2("SetupMode", &mut var_name);
+        let mut data = [1_u8; 1];
+        set_variable(
+            &mut var_name as *mut _,
+            &mut GLOBAL_VARIABLE_GUID as *mut _,
+            efi::VARIABLE_BOOTSERVICE_ACCESS | efi::VARIABLE_RUNTIME_ACCESS,
+            1,
+            &mut data as *mut _ as *mut c_void);
+    }
+
+    {
+        let mut var_name = [0_u16; 64];
+        crate::common::ascii_to_ucs2("OsIndicationsSupported", &mut var_name);
+        let mut data = [0_u8; 8];
+        set_variable(
+            &mut var_name as *mut _,
+            &mut GLOBAL_VARIABLE_GUID as *mut _,
+            efi::VARIABLE_BOOTSERVICE_ACCESS | efi::VARIABLE_RUNTIME_ACCESS,
+            8,
+            &mut data as *mut _ as *mut c_void);
+    }
+    */
+
+    ALLOCATOR.borrow_mut().dump_allocations();
 
     let ptr = address as *const ();
     let code: eficall! { fn(Handle, *mut efi::SystemTable) -> Status } =
