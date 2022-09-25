@@ -455,7 +455,7 @@ pub static LAYOUT: KernelVirtualLayout<NUM_MEM_RANGES> = KernelVirtualLayout::ne
             physical_range_translation: Translation::Identity,
             attribute_fields: AttributeFields {
                 mem_attributes: MemAttributes::CacheableDRAM,
-                acc_perms: AccessPermissions::ReadOnly,
+                acc_perms: AccessPermissions::ReadWrite,
                 execute_never: false,
             },
         },
@@ -483,15 +483,15 @@ pub static LAYOUT: KernelVirtualLayout<NUM_MEM_RANGES> = KernelVirtualLayout::ne
 );
 
 fn fw_range_inclusive() -> RangeInclusive<usize> {
-    RangeInclusive::new(0x0000_0000, 0x07ff_ffff)
+    RangeInclusive::new(0x0000_0000, 0x003f_ffff)
 }
 
 fn mmio_range_inclusive() -> RangeInclusive<usize> {
-    RangeInclusive::new(0x0800_0000, 0x0fff_ffff)
+    RangeInclusive::new(0x0040_0000, 0x3fff_ffff)
 }
 
 fn dram_range_inclusive() -> RangeInclusive<usize> {
-    RangeInclusive::new(0x1000_0000, 0xffff_ffff)
+    RangeInclusive::new(0x4000_0000, 0xffff_ffff)
 }
 
 pub fn virt_mem_layout() -> &'static KernelVirtualLayout<NUM_MEM_RANGES> {
