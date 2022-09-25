@@ -412,19 +412,18 @@ impl Allocator {
 
     #[allow(dead_code)]
     pub fn dump_allocations(&self) {
-        for allocation in self.allocations {
+        for (index, allocation) in self.allocations.into_iter().enumerate() {
             if allocation.in_use {
-                log!("descriptor:");
-                log!("  type: {:#x}", allocation.descriptor.r#type);
+                let start = allocation.descriptor.physical_start;
+                let end = start + allocation.descriptor.number_of_pages * PAGE_SIZE;
                 log!(
-                    "  physical_start: {:#x}",
-                    allocation.descriptor.physical_start
+                    "{:>2}: [{:#010x}-{:#010x}]: type: {:#x}, attribute: {:#x}",
+                    index,
+                    start,
+                    end,
+                    allocation.descriptor.r#type,
+                    allocation.descriptor.attribute
                 );
-                log!(
-                    "  number_of_pages: {:#x}",
-                    allocation.descriptor.number_of_pages
-                );
-                log!("  attribute: {:#x}", allocation.descriptor.attribute);
             }
         }
     }
