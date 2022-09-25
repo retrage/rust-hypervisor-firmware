@@ -677,11 +677,6 @@ pub fn handle_protocol(
     out: *mut *mut c_void,
 ) -> Status {
     dbg!();
-    unsafe {
-        loop {
-            core::arch::asm!("yield");
-        }
-    }
     open_protocol(handle, guid, out, null_mut(), null_mut(), 0)
 }
 }
