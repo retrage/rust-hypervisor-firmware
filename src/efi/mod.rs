@@ -1061,8 +1061,6 @@ extern "C" {
     static TEXT_START: c_void;
     #[link_name = "text_end"]
     static TEXT_END: c_void;
-    #[link_name = "stack_start"]
-    static STACK_START: c_void;
 }
 
 const PAGE_SIZE: u64 = 4096;
@@ -1085,11 +1083,9 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
     let ram_min = unsafe { &RAM_MIN as *const _ as u64 };
     let text_start = unsafe { &TEXT_START as *const _ as u64 };
     let text_end = unsafe { &TEXT_END as *const _ as u64 };
-    let stack_start = unsafe { &STACK_START as *const _ as u64 };
     assert!(ram_min % PAGE_SIZE == 0);
     assert!(text_start % PAGE_SIZE == 0);
     assert!(text_end % PAGE_SIZE == 0);
-    assert!(stack_start % PAGE_SIZE == 0);
 
     // Add ourselves
     if text_start - ram_min > 0 {
@@ -1106,11 +1102,14 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
         (text_end - text_start) / PAGE_SIZE,
         text_start,
     );
+
+    let stack_start = 0xfc000000;
+    let stack_size = 128 * 1024 * 1024;
     ALLOCATOR.borrow_mut().allocate_pages(
         efi::ALLOCATE_ADDRESS,
         efi::RUNTIME_SERVICES_DATA,
-        (stack_start - text_end) / PAGE_SIZE,
-        text_end,
+        stack_size / PAGE_SIZE,
+        stack_start - stack_size,
     );
 
     // Add the loaded binary

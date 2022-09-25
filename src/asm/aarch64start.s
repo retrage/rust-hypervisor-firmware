@@ -5,7 +5,6 @@
 /* REF: https://fuchsia.googlesource.com/fuchsia/+/refs/heads/main/zircon/kernel/target/arm64/boot-shim/boot-shim.S */
 
 .global aarch64_header
-.extern stack_start
 .section .text.boot, "ax"
 
 aarch64_header:
@@ -31,7 +30,7 @@ aarch64_start:
   /* x0 typically points to device tree at entry */
 
   /* setup stack */
-  ldr x30, =stack_start
+  ldr x30, =0xfc000000
   mov sp, x30
 
   /* x0: pointer to device tree */
