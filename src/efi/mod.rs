@@ -1457,7 +1457,6 @@ pub fn efi_exec(
     }
     */
 
-    /*
     {
         let mut var_name = [0_u16; 64];
         crate::common::ascii_to_ucs2("SecureBoot", &mut var_name);
@@ -1493,7 +1492,6 @@ pub fn efi_exec(
             8,
             &mut data as *mut _ as *mut c_void);
     }
-    */
 
     ALLOCATOR.borrow_mut().dump_allocations();
 
