@@ -238,7 +238,7 @@ unsafe fn fixup_at_virtual(descriptors: &[alloc::MemoryDescriptor]) {
 
 eficall! {
 pub fn not_available() -> Status {
-    dbg!();
+    // XXX: Do not do anything. This function is called after 
     Status::UNSUPPORTED
 }
 }
