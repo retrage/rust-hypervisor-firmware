@@ -414,13 +414,17 @@ impl Allocator {
     pub fn dump_allocations(&self) {
         for (index, allocation) in self.allocations.into_iter().enumerate() {
             if allocation.in_use {
-                let start = allocation.descriptor.physical_start;
-                let end = start + allocation.descriptor.number_of_pages * PAGE_SIZE;
+                let phys_start = allocation.descriptor.physical_start;
+                let phys_end = phys_start + allocation.descriptor.number_of_pages * PAGE_SIZE;
+                let virt_start = allocation.descriptor.virtual_start;
+                let virt_end = virt_start + allocation.descriptor.number_of_pages * PAGE_SIZE;
                 log!(
-                    "{:>2}: [{:#010x}-{:#010x}]: type: {:#x}, attribute: {:#x}",
+                    "{:>2}: [{:#010x}-{:#010x}] -> [{:#010x}-{:#010x}]: type: {:#x}, attribute: {:#x}",
                     index,
-                    start,
-                    end,
+                    phys_start,
+                    phys_end,
+                    virt_start,
+                    virt_end,
                     allocation.descriptor.r#type,
                     allocation.descriptor.attribute
                 );

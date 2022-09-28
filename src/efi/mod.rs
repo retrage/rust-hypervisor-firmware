@@ -199,6 +199,18 @@ unsafe fn fixup_at_virtual(descriptors: &[alloc::MemoryDescriptor]) {
     let mut st = &mut ST;
     let mut rs = &mut RS;
 
+    log!("rs.get_time(): {:#x}", &rs.get_time as *const _ as u64);
+    log!("rs.set_time(): {:#x}", &rs.set_time as *const _ as u64);
+    log!("rs.get_wakeup_time(): {:#x}", &rs.get_wakeup_time as *const _ as u64);
+    log!("rs.set_wakeup_time(): {:#x}", &rs.set_wakeup_time as *const _ as u64);
+    log!("rs.get_variable(): {:#x}", &rs.get_variable as *const _ as u64);
+    log!("rs.set_variable(): {:#x}", &rs.set_variable as *const _ as u64);
+    log!("rs.get_next_variable_name(): {:#x}", &rs.get_next_variable_name as *const _ as u64);
+    log!("rs.reset_system(): {:#x}", &rs.reset_system as *const _ as u64);
+    log!("rs.update_capsule(): {:#x}", &rs.update_capsule as *const _ as u64);
+    log!("rs.query_capsule_capabilities(): {:#x}", &rs.query_capsule_capabilities as *const _ as u64);
+    log!("rs.query_variable_info(): {:#x}", &rs.query_variable_info as *const _ as u64);
+
     let ptr = convert_internal_pointer(descriptors, (not_available as *const ()) as u64).unwrap();
     rs.get_time = transmute(ptr);
     rs.set_time = transmute(ptr);
@@ -211,14 +223,17 @@ unsafe fn fixup_at_virtual(descriptors: &[alloc::MemoryDescriptor]) {
     rs.update_capsule = transmute(ptr);
     rs.query_capsule_capabilities = transmute(ptr);
     rs.query_variable_info = transmute(ptr);
+    log!("not_available(): {:#x}", ptr);
 
     let ct = st.configuration_table;
     let ptr = convert_internal_pointer(descriptors, (ct as *const _) as u64).unwrap();
     st.configuration_table = ptr as *mut ConfigurationTable;
+    log!("st.configuration_table: {:#x}", ptr);
 
     let rs = st.runtime_services;
     let ptr = convert_internal_pointer(descriptors, (rs as *const _) as u64).unwrap();
     st.runtime_services = ptr as *mut RuntimeServices;
+    log!("st.runtime_services: {:#x}", ptr);
 }
 
 eficall! {
@@ -316,7 +331,10 @@ pub fn set_virtual_address_map(
         fixup_at_virtual(descriptors);
     }
 
-    ALLOCATOR.borrow_mut().update_virtual_addresses(descriptors)
+    let status = ALLOCATOR.borrow_mut().update_virtual_addresses(descriptors);
+    ALLOCATOR.borrow_mut().dump_allocations();
+
+    status
 }
 }
 
