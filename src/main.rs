@@ -152,6 +152,7 @@ pub extern "C" fn rust64_start() -> ! {
     loop {}
 }
 
+#[cfg(target_arch = "x86_64")]
 fn main(info: &dyn boot::Info) -> ! {
     log!("\nBooting with {}", info.name());
 
