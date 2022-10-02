@@ -22,6 +22,16 @@ unsafe fn rdtsc() -> u64 {
     0
 }
 
+#[cfg(target_arch = "x86_64")]
+#[inline]
+unsafe fn pause() {
+    asm!("pause");
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+#[inline]
+unsafe fn pause() {}
+
 pub fn ndelay(ns: u64) {
     let delta = ns * CPU_KHZ_DEFAULT / NSECS_PER_SEC;
     let mut pause_delta = 0;
@@ -31,7 +41,7 @@ pub fn ndelay(ns: u64) {
             pause_delta = delta - PAUSE_THRESHOLD_TICKS;
         }
         while rdtsc() - start < pause_delta {
-            asm!("pause");
+            pause();
         }
         while rdtsc() - start < delta {}
     }
