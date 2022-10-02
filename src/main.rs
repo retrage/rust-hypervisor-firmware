@@ -152,6 +152,12 @@ pub extern "C" fn rust64_start(#[cfg(not(feature = "coreboot"))] pvh_info: &pvh:
     main(info)
 }
 
+#[cfg(not(target_arch = "x86_64"))]
+#[no_mangle]
+pub extern "C" fn rust64_start() -> ! {
+    loop {}
+}
+
 #[cfg(target_arch = "x86_64")]
 fn main(info: &dyn boot::Info) -> ! {
     log!("\nBooting with {}", info.name());
