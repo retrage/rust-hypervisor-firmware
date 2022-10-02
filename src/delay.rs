@@ -28,6 +28,16 @@ unsafe fn pause() {
     asm!("pause");
 }
 
+#[cfg(target_arch = "x86_64")]
+#[inline]
+unsafe fn pause() {
+    asm!("pause");
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+#[inline]
+unsafe fn pause() {}
+
 pub fn ndelay(ns: u64) {
     let delta = ns * CPU_KHZ_DEFAULT / NSECS_PER_SEC;
     let mut pause_delta = 0;
