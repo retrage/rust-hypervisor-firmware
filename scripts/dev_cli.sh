@@ -227,6 +227,9 @@ cmd_build() {
 
     process_volumes_args
 
+    [ "$(uname -m)" == "aarch64" ] && target="aarch64-unknown-none.json"
+    [ "$(uname -m)" == "x86_64" ] && target="x86_64-unknown-none.json"
+
     cargo_args=("$@")
     [ $build = "release" ] && cargo_args+=("--release")
 
@@ -240,7 +243,7 @@ cmd_build() {
 	   --volume "$RHF_ROOT_DIR:$CTR_RHF_ROOT_DIR" $exported_volumes \
 	   --env RUSTFLAGS="$rustflags" \
 	   "$CTR_IMAGE" \
-	   cargo build --target "x86_64-unknown-none.json" \
+	   cargo build --target "$target" \
 	         -Zbuild-std=core,alloc \
 	         -Zbuild-std-features=compiler-builtins-mem \
 	         --target-dir "$CTR_RHF_CARGO_TARGET" \
@@ -399,6 +402,7 @@ cmd_build-container() {
     mkdir -p $BUILD_DIR
     cp $RHF_DOCKERFILE $BUILD_DIR
 
+    [ $(uname -m) = "aarch64" ] && TARGETARCH="arm64"
     [ $(uname -m) = "x86_64" ] && TARGETARCH="amd64"
     RUST_TOOLCHAIN="$(rustup show active-toolchain | cut -d ' ' -f1)"
 
