@@ -129,6 +129,7 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn boot::Info
     true
 }
 
+#[cfg(target_arch = "x86_64")]
 #[no_mangle]
 pub extern "C" fn rust64_start(#[cfg(not(feature = "coreboot"))] rdi: &pvh::StartInfo) -> ! {
     serial::PORT.borrow_mut().init();
@@ -142,6 +143,12 @@ pub extern "C" fn rust64_start(#[cfg(not(feature = "coreboot"))] rdi: &pvh::Star
     let rdi = &info;
 
     main(rdi)
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+#[no_mangle]
+pub extern "C" fn rust64_start() -> ! {
+    loop {}
 }
 
 fn main(info: &dyn boot::Info) -> ! {
