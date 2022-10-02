@@ -56,6 +56,7 @@ mod virtio;
 fn panic(info: &PanicInfo) -> ! {
     log!("PANIC: {}", info);
     loop {
+        #[cfg(target_arch = "x86_64")]
         hlt()
     }
 }
