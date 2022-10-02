@@ -10,6 +10,12 @@ const NSECS_PER_SEC: u64 = 1000000000;
 const CPU_KHZ_DEFAULT: u64 = 200;
 const PAUSE_THRESHOLD_TICKS: u64 = 150;
 
+#[cfg(not(target_arch = "x86_64"))]
+#[inline]
+unsafe fn rdtsc() -> u64 {
+    0
+}
+
 #[cfg(target_arch = "x86_64")]
 #[inline]
 unsafe fn rdtsc() -> u64 {
