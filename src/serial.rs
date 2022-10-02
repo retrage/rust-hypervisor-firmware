@@ -18,9 +18,12 @@
 use core::fmt;
 
 use atomic_refcell::AtomicRefCell;
+
+#[cfg(target_arch = "x86_64")]
 use uart_16550::SerialPort;
 
 // We use COM1 as it is the standard first serial port.
+#[cfg(target_arch = "x86_64")]
 pub static PORT: AtomicRefCell<SerialPort> = AtomicRefCell::new(unsafe { SerialPort::new(0x3f8) });
 
 pub struct Serial;

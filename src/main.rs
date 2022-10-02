@@ -22,6 +22,7 @@
 
 use core::panic::PanicInfo;
 
+#[cfg(target_arch = "x86_64")]
 use x86_64::instructions::hlt;
 
 #[macro_use]
@@ -46,6 +47,7 @@ mod part;
 mod pci;
 mod pe;
 mod pvh;
+#[cfg(target_arch = "x86_64")]
 mod rtc;
 mod virtio;
 

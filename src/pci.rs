@@ -13,6 +13,8 @@
 // limitations under the License.
 
 use atomic_refcell::AtomicRefCell;
+
+#[cfg(target_arch = "x86_64")]
 use x86_64::instructions::port::{PortReadOnly, PortWriteOnly};
 
 use crate::{
