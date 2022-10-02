@@ -16,10 +16,12 @@ unsafe fn rdtsc() -> u64 {
     _rdtsc()
 }
 
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(target_arch = "aarch64")]
 #[inline]
 unsafe fn rdtsc() -> u64 {
-    0
+    let value: u64;
+    asm!("mrs {}, cntvct_el0", out(reg) value);
+    value
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -28,9 +30,11 @@ unsafe fn pause() {
     asm!("pause");
 }
 
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(target_arch = "aarch64")]
 #[inline]
-unsafe fn pause() {}
+unsafe fn pause() {
+    asm!("yield");
+}
 
 pub fn ndelay(ns: u64) {
     let delta = ns * CPU_KHZ_DEFAULT / NSECS_PER_SEC;
