@@ -32,6 +32,11 @@ impl fmt::Write for Serial {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         PORT.borrow_mut().write_str(s)
     }
+
+    #[cfg(not(target_arch = "x86_64"))]
+    fn write_str(&mut self, _s: &str) -> fmt::Result {
+        Ok(())
+    }
 }
 
 #[macro_export]
