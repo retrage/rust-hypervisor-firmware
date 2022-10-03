@@ -24,10 +24,7 @@
 use core::panic::PanicInfo;
 
 #[cfg(target_arch = "x86_64")]
-use x86_64::{
-    instructions::hlt,
-    registers::control::{Cr0, Cr0Flags, Cr4, Cr4Flags},
-};
+use x86_64::instructions::hlt;
 
 #[macro_use]
 mod serial;
@@ -35,8 +32,9 @@ mod serial;
 #[macro_use]
 mod common;
 
-#[cfg(not(test))]
-mod asm;
+#[cfg(target_arch = "aarch64")]
+mod aarch64_paging;
+mod arch;
 mod block;
 mod boot;
 #[cfg(target_arch = "x86_64")]
@@ -48,8 +46,6 @@ mod efi;
 mod fat;
 #[cfg(target_arch = "aarch64")]
 mod fdt;
-#[cfg(target_arch = "x86_64")]
-mod gdt;
 #[cfg(all(test, feature = "integration_tests"))]
 mod integration;
 #[cfg(target_arch = "x86_64")]
@@ -57,10 +53,6 @@ mod loader;
 mod mem;
 #[cfg(target_arch = "aarch64")]
 mod mmio;
-#[cfg(target_arch = "x86_64")]
-mod paging;
-#[cfg(target_arch = "aarch64")]
-mod aarch64_paging;
 mod part;
 mod pci;
 mod pe;
@@ -88,19 +80,6 @@ fn panic(info: &PanicInfo) -> ! {
 #[panic_handler]
 fn panic(_: &PanicInfo) -> ! {
     loop {}
-}
-
-// Enable SSE2 for XMM registers (needed for EFI calling)
-#[cfg(target_arch = "x86_64")]
-fn enable_sse() {
-    let mut cr0 = Cr0::read();
-    cr0.remove(Cr0Flags::EMULATE_COPROCESSOR);
-    cr0.insert(Cr0Flags::MONITOR_COPROCESSOR);
-    unsafe { Cr0::write(cr0) };
-    let mut cr4 = Cr4::read();
-    cr4.insert(Cr4Flags::OSFXSR);
-    cr4.insert(Cr4Flags::OSXMMEXCPT_ENABLE);
-    unsafe { Cr4::write(cr4) };
 }
 
 const VIRTIO_PCI_VENDOR_ID: u16 = 0x1af4;
@@ -182,8 +161,8 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn boot::Info
 pub extern "C" fn rust64_start(#[cfg(not(feature = "coreboot"))] rdi: &pvh::StartInfo) -> ! {
     serial::PORT.borrow_mut().init();
 
-    enable_sse();
-    paging::setup();
+    arch::x86_64::sse::enable_sse();
+    arch::x86_64::paging::setup();
 
     #[cfg(not(feature = "coreboot"))]
     let info = *rdi;
