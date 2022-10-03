@@ -20,7 +20,7 @@ use core::fmt;
 use atomic_refcell::AtomicRefCell;
 
 #[cfg(target_arch = "aarch64")]
-use crate::pl011::Pl011SerialPort;
+use crate::devices::pl011::Pl011SerialPort;
 
 #[cfg(target_arch = "x86_64")]
 use uart_16550::SerialPort;

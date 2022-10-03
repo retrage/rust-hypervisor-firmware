@@ -40,6 +40,7 @@ mod bzimage;
 #[cfg(target_arch = "x86_64")]
 mod coreboot;
 mod delay;
+mod devices;
 mod efi;
 mod fat;
 #[cfg(target_arch = "aarch64")]
@@ -52,16 +53,9 @@ mod mem;
 #[cfg(target_arch = "aarch64")]
 mod mmio;
 mod part;
-mod pci;
 mod pe;
-#[cfg(target_arch = "aarch64")]
-mod pl011;
-#[cfg(target_arch = "aarch64")]
-mod pl031;
 #[cfg(target_arch = "x86_64")]
 mod pvh;
-#[cfg(target_arch = "x86_64")]
-mod rtc;
 mod virtio;
 
 #[cfg(all(not(test), feature = "log-panic"))]
@@ -187,7 +181,7 @@ pub extern "C" fn rust64_start(x0: *const u8) -> ! {
     let info = fdt::StartInfo::new(x0);
 
     if let Some(region) = info.pci_cfg_region() {
-        pci::init(region);
+        devices::pci::init(region);
     }
 
     main(&info)
@@ -215,13 +209,13 @@ fn main(
         );
     }
 
-    pci::print_bus();
+    devices::pci::print_bus();
 
-    pci::with_devices(
+    devices::pci::with_devices(
         VIRTIO_PCI_VENDOR_ID,
         VIRTIO_PCI_BLOCK_DEVICE_ID,
         |pci_device| {
-            let mut pci_transport = pci::VirtioPciTransport::new(pci_device);
+            let mut pci_transport = devices::pci::VirtioPciTransport::new(pci_device);
             let mut device = block::VirtioBlockDevice::new(&mut pci_transport);
             boot_from_device(&mut device, info)
         },
