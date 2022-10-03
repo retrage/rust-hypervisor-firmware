@@ -201,15 +201,42 @@ unsafe fn fixup_at_virtual(descriptors: &[alloc::MemoryDescriptor]) {
 
     log!("rs.get_time(): {:#x}", &rs.get_time as *const _ as u64);
     log!("rs.set_time(): {:#x}", &rs.set_time as *const _ as u64);
-    log!("rs.get_wakeup_time(): {:#x}", &rs.get_wakeup_time as *const _ as u64);
-    log!("rs.set_wakeup_time(): {:#x}", &rs.set_wakeup_time as *const _ as u64);
-    log!("rs.get_variable(): {:#x}", &rs.get_variable as *const _ as u64);
-    log!("rs.set_variable(): {:#x}", &rs.set_variable as *const _ as u64);
-    log!("rs.get_next_variable_name(): {:#x}", &rs.get_next_variable_name as *const _ as u64);
-    log!("rs.reset_system(): {:#x}", &rs.reset_system as *const _ as u64);
-    log!("rs.update_capsule(): {:#x}", &rs.update_capsule as *const _ as u64);
-    log!("rs.query_capsule_capabilities(): {:#x}", &rs.query_capsule_capabilities as *const _ as u64);
-    log!("rs.query_variable_info(): {:#x}", &rs.query_variable_info as *const _ as u64);
+    log!(
+        "rs.get_wakeup_time(): {:#x}",
+        &rs.get_wakeup_time as *const _ as u64
+    );
+    log!(
+        "rs.set_wakeup_time(): {:#x}",
+        &rs.set_wakeup_time as *const _ as u64
+    );
+    log!(
+        "rs.get_variable(): {:#x}",
+        &rs.get_variable as *const _ as u64
+    );
+    log!(
+        "rs.set_variable(): {:#x}",
+        &rs.set_variable as *const _ as u64
+    );
+    log!(
+        "rs.get_next_variable_name(): {:#x}",
+        &rs.get_next_variable_name as *const _ as u64
+    );
+    log!(
+        "rs.reset_system(): {:#x}",
+        &rs.reset_system as *const _ as u64
+    );
+    log!(
+        "rs.update_capsule(): {:#x}",
+        &rs.update_capsule as *const _ as u64
+    );
+    log!(
+        "rs.query_capsule_capabilities(): {:#x}",
+        &rs.query_capsule_capabilities as *const _ as u64
+    );
+    log!(
+        "rs.query_variable_info(): {:#x}",
+        &rs.query_variable_info as *const _ as u64
+    );
 
     let ptr = convert_internal_pointer(descriptors, (not_available as *const ()) as u64).unwrap();
     rs.get_time = transmute(ptr);
@@ -238,7 +265,7 @@ unsafe fn fixup_at_virtual(descriptors: &[alloc::MemoryDescriptor]) {
 
 eficall! {
 pub fn not_available() -> Status {
-    // XXX: Do not do anything. This function is called after 
+    // XXX: Do not do anything. This function is called after
     Status::UNSUPPORTED
 }
 }
