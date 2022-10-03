@@ -32,8 +32,6 @@ mod serial;
 #[macro_use]
 mod common;
 
-#[cfg(target_arch = "aarch64")]
-mod aarch64_paging;
 mod arch;
 mod block;
 mod boot;
@@ -178,10 +176,10 @@ pub extern "C" fn rust64_start(#[cfg(not(feature = "coreboot"))] rdi: &pvh::Star
 pub extern "C" fn rust64_start(x0: *const u8) -> ! {
     serial::PORT.borrow_mut().init();
 
-    use crate::aarch64_paging::interface::MMU;
+    use crate::arch::aarch64::paging::interface::MMU;
 
     unsafe {
-        if let Err(e) = aarch64_paging::mmu().enable_mmu_and_caching() {
+        if let Err(e) = arch::aarch64::paging::mmu().enable_mmu_and_caching() {
             panic!("MMU: {:?}", e);
         }
     }
