@@ -640,6 +640,7 @@ const SHIM_LOCK_PROTOCOL_GUID: Guid = Guid::from_fields(
     &[0x3d, 0xd8, 0x10, 0xdd, 0x8b, 0x23],
 );
 
+#[allow(dead_code)]
 const GLOBAL_VARIABLE_GUID: Guid = Guid::from_fields(
     0x8BE4_DF61,
     0x93CA,
@@ -1064,7 +1065,7 @@ pub fn locate_handle_buffer(
 
 eficall! {
 pub fn locate_protocol(
-    guid: *mut Guid,
+    _: *mut Guid,
     _: *mut c_void,
     _: *mut *mut c_void,
 ) -> Status {
