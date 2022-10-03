@@ -3,10 +3,9 @@
 
 use fdt_rs::{base::DevTreeNode, prelude::PropReader};
 
-use crate::{
-    fdt, mem,
-    virtio::{Error as VirtioError, VirtioTransport},
-};
+use crate::{fdt, mem};
+
+use super::virtio::{Error as VirtioError, VirtioTransport};
 
 pub struct VirtioMmioTransport {
     device: MmioDevice,

@@ -14,8 +14,8 @@
 use atomic_refcell::AtomicRefCell;
 
 use crate::{
-    block::SectorBuf,
     boot::{E820Entry, Header, Info, Params},
+    devices::block::SectorBuf,
     fat::{self, Read},
     mem::MemoryRegion,
 };

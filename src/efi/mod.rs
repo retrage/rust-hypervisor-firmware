@@ -1361,7 +1361,7 @@ pub fn efi_exec(
     loaded_size: u64,
     info: &dyn boot::Info,
     fs: &crate::fat::Filesystem,
-    block: *const crate::block::VirtioBlockDevice,
+    block: *const crate::devices::block::VirtioBlockDevice,
 ) {
     let vendor_data = 0u32;
     let acpi_rsdp_ptr = info.rsdp_addr();

@@ -20,7 +20,7 @@ use r_efi::{
     protocols::device_path::Protocol as DevicePathProtocol,
 };
 
-use crate::block::SectorBuf;
+use crate::devices::block::SectorBuf;
 
 pub const PROTOCOL_GUID: Guid = Guid::from_fields(
     0x964e_5b21,
@@ -91,7 +91,7 @@ pub struct BlockIoProtocol {
 #[repr(C)]
 pub struct BlockWrapper<'a> {
     hw: super::HandleWrapper,
-    block: *const crate::block::VirtioBlockDevice<'a>,
+    block: *const crate::devices::block::VirtioBlockDevice<'a>,
     media: BlockIoMedia,
     pub proto: BlockIoProtocol,
     // The ordering of these paths are very important, along with the C
@@ -128,7 +128,7 @@ pub fn read_blocks(
     let mut region = crate::mem::MemoryRegion::new(buffer as u64, size as u64);
 
     for i in 0..blocks {
-        use crate::block::SectorRead;
+        use crate::devices::block::SectorRead;
         let data = region.as_mut_slice((i * block_size) as u64, block_size as u64);
         let block = unsafe { &*wrapper.block };
         match block.read(wrapper.start_lba + start + i as u64, data) {
@@ -159,7 +159,7 @@ pub fn write_blocks(
     let mut region = crate::mem::MemoryRegion::new(buffer as u64, size as u64);
 
     for i in 0..blocks {
-        use crate::block::SectorWrite;
+        use crate::devices::block::SectorWrite;
         let data = region.as_mut_slice((i * block_size) as u64, block_size as u64);
         let block = unsafe { &*wrapper.block };
         match block.write(wrapper.start_lba + start + i as u64, data) {
@@ -178,7 +178,7 @@ eficall! {
 pub fn flush_blocks(proto: *mut BlockIoProtocol) -> Status {
     let wrapper = container_of!(proto, BlockWrapper, proto);
     let wrapper = unsafe { &*wrapper };
-    use crate::block::SectorWrite;
+    use crate::devices::block::SectorWrite;
     let block = unsafe { &*wrapper.block };
     match block.flush() {
         Ok(()) => Status::SUCCESS,
@@ -189,7 +189,7 @@ pub fn flush_blocks(proto: *mut BlockIoProtocol) -> Status {
 
 impl<'a> BlockWrapper<'a> {
     pub fn new(
-        block: *const crate::block::VirtioBlockDevice,
+        block: *const crate::devices::block::VirtioBlockDevice,
         partition_number: u32,
         start_lba: u64,
         last_lba: u64,
@@ -312,7 +312,7 @@ impl<'a> BlockWrapper<'a> {
 #[allow(clippy::transmute_ptr_to_ptr)]
 pub fn populate_block_wrappers(
     wrappers: &mut BlockWrappers,
-    block: *const crate::block::VirtioBlockDevice,
+    block: *const crate::devices::block::VirtioBlockDevice,
 ) -> Option<u32> {
     let mut parts: [crate::part::PartitionEntry; 16] = unsafe { core::mem::zeroed() };
 

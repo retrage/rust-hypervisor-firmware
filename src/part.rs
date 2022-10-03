@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::block::{Error as BlockError, SectorBuf, SectorRead};
+use crate::devices::block::{Error as BlockError, SectorBuf, SectorRead};
 
 #[repr(packed)]
 /// GPT header
@@ -154,8 +154,8 @@ pub mod tests {
     use std::io::SeekFrom;
     use std::path::{Path, PathBuf};
 
-    use crate::block;
-    use crate::block::{SectorBuf, SectorRead};
+    use crate::devices::block;
+    use crate::devices::block::{SectorBuf, SectorRead};
 
     pub struct FakeDisk {
         file: RefCell<File>,

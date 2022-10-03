@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::{
-    block::{Error as BlockError, SectorBuf, SectorRead},
+    devices::block::{Error as BlockError, SectorBuf, SectorRead},
     mem::MemoryRegion,
 };
 use core::convert::TryFrom;
@@ -554,9 +554,9 @@ impl<'a> Read for File<'a> {
 }
 
 impl<'a> SectorRead for Filesystem<'a> {
-    fn read(&self, sector: u64, data: &mut [u8]) -> Result<(), crate::block::Error> {
+    fn read(&self, sector: u64, data: &mut [u8]) -> Result<(), crate::devices::block::Error> {
         if self.start + sector > self.last {
-            Err(crate::block::Error::BlockIO)
+            Err(crate::devices::block::Error::BlockIO)
         } else {
             self.device.read(self.start + sector, data)
         }
@@ -896,7 +896,7 @@ impl<'a> Filesystem<'a> {
 #[cfg(test)]
 mod tests {
     use super::Read;
-    use crate::block::SectorBuf;
+    use crate::devices::block::SectorBuf;
     use crate::part::tests::*;
     use std::convert::TryInto;
     use std::path::PathBuf;

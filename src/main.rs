@@ -33,7 +33,6 @@ mod serial;
 mod common;
 
 mod arch;
-mod block;
 mod boot;
 #[cfg(target_arch = "x86_64")]
 mod bzimage;
@@ -50,13 +49,10 @@ mod integration;
 #[cfg(target_arch = "x86_64")]
 mod loader;
 mod mem;
-#[cfg(target_arch = "aarch64")]
-mod mmio;
 mod part;
 mod pe;
 #[cfg(target_arch = "x86_64")]
 mod pvh;
-mod virtio;
 
 #[cfg(all(not(test), feature = "log-panic"))]
 #[panic_handler]
@@ -77,7 +73,7 @@ fn panic(_: &PanicInfo) -> ! {
 const VIRTIO_PCI_VENDOR_ID: u16 = 0x1af4;
 const VIRTIO_PCI_BLOCK_DEVICE_ID: u16 = 0x1042;
 
-fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn boot::Info) -> bool {
+fn boot_from_device(device: &mut devices::block::VirtioBlockDevice, info: &dyn boot::Info) -> bool {
     if let Err(err) = device.init() {
         log!("Error configuring block device: {:?}", err);
         return false;
@@ -197,13 +193,13 @@ fn main(
     {
         const VIRTIO_MMIO_VENDOR_ID: u32 = 0x554d4551;
         const VIRTIO_MMIO_BLOCK_DEVICE_ID: u32 = 0x2;
-        mmio::with_devices(
+        devices::mmio::with_devices(
             info,
             VIRTIO_MMIO_VENDOR_ID,
             VIRTIO_MMIO_BLOCK_DEVICE_ID,
             |mmio_device| {
-                let mut mmio_transport = mmio::VirtioMmioTransport::new(mmio_device);
-                let mut device = block::VirtioBlockDevice::new(&mut mmio_transport);
+                let mut mmio_transport = devices::mmio::VirtioMmioTransport::new(mmio_device);
+                let mut device = devices::block::VirtioBlockDevice::new(&mut mmio_transport);
                 boot_from_device(&mut device, info)
             },
         );
@@ -216,7 +212,7 @@ fn main(
         VIRTIO_PCI_BLOCK_DEVICE_ID,
         |pci_device| {
             let mut pci_transport = devices::pci::VirtioPciTransport::new(pci_device);
-            let mut device = block::VirtioBlockDevice::new(&mut pci_transport);
+            let mut device = devices::block::VirtioBlockDevice::new(&mut pci_transport);
             boot_from_device(&mut device, info)
         },
     );

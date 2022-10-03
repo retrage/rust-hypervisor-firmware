@@ -17,10 +17,9 @@ use atomic_refcell::AtomicRefCell;
 #[cfg(target_arch = "x86_64")]
 use x86_64::instructions::port::{Port, PortWriteOnly};
 
-use crate::{
-    mem,
-    virtio::{Error as VirtioError, VirtioTransport},
-};
+use crate::mem;
+
+use super::virtio::{Error as VirtioError, VirtioTransport};
 
 const MAX_BUSES: u8 = 8;
 const MAX_DEVICES: u8 = 32;

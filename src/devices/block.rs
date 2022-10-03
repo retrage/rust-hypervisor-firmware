@@ -14,7 +14,7 @@
 
 use core::cell::RefCell;
 
-use crate::virtio::{Error as VirtioError, VirtioTransport};
+use super::virtio::{Error as VirtioError, VirtioTransport};
 
 const QUEUE_SIZE: usize = 16;
 
