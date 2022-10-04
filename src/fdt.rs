@@ -124,6 +124,7 @@ impl StartInfo<'_> {
 
     pub fn pci_cfg_region(&self) -> Option<MemoryRegion> {
         let node = self.get_node_with(0, |node| {
+            // TODO: Fix to check "compatible" property
             if let Ok(name) = node.name() {
                 return name.starts_with("pci@");
             }

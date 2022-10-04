@@ -6,6 +6,7 @@ use chrono::{DateTime, Datelike, NaiveDateTime, Timelike, Utc};
 
 use crate::mem;
 
+// TODO: Configure base address from FDT
 static RTC: AtomicRefCell<Pl031> = AtomicRefCell::new(Pl031::new(0x9010000));
 
 struct Pl031 {

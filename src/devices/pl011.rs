@@ -15,6 +15,7 @@ impl Pl011SerialPort {
     }
 
     pub fn send(&mut self, data: u8) {
+        // TODO: Configure base address from FDT
         const BASE_ADDR: *mut u8 = 0x0900_0000 as *mut u8;
         unsafe {
             core::ptr::write_volatile(BASE_ADDR, data);
