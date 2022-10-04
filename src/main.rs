@@ -57,6 +57,7 @@ mod pci;
 mod pe;
 #[cfg(target_arch = "x86_64")]
 mod pvh;
+mod rtc;
 mod virtio;
 
 #[cfg(all(not(test), feature = "log-panic"))]

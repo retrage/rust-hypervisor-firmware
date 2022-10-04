@@ -36,7 +36,7 @@ use r_efi::{
 };
 
 use crate::boot;
-use crate::devices;
+use crate::rtc;
 
 mod alloc;
 mod block;
@@ -274,24 +274,12 @@ pub fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Status {
         return Status::INVALID_PARAMETER;
     }
 
-    #[cfg(target_arch = "x86_64")]
-    let (year, month, day) = match devices::cmos::read_date() {
-        Ok((y, m, d)) => (y, m, d),
-        Err(()) => return Status::DEVICE_ERROR,
-    };
-    #[cfg(target_arch = "aarch64")]
-    let (year, month, day) = match devices::rtc_pl031::read_date() {
+    let (year, month, day) = match rtc::read_date() {
         Ok((y, m, d)) => (y, m, d),
         Err(()) => return Status::DEVICE_ERROR,
     };
 
-    #[cfg(target_arch = "x86_64")]
-    let (hour, minute, second) = match devices::cmos::read_time() {
-        Ok((h, m, s)) => (h, m, s),
-        Err(()) => return Status::DEVICE_ERROR,
-    };
-    #[cfg(target_arch = "aarch64")]
-    let (hour, minute, second) = match devices::rtc_pl031::read_time() {
+    let (hour, minute, second) = match rtc::read_time() {
         Ok((h, m, s)) => (h, m, s),
         Err(()) => return Status::DEVICE_ERROR,
     };
