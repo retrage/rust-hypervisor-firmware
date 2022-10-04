@@ -19,7 +19,7 @@ use x86_64::instructions::port::{Port, PortWriteOnly};
 
 use crate::mem;
 
-use super::virtio::{Error as VirtioError, VirtioTransport};
+use crate::virtio::{Error as VirtioError, VirtioTransport};
 
 const MAX_BUSES: u8 = 8;
 const MAX_DEVICES: u8 = 32;

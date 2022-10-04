@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{devices::block::SectorBuf, mem::MemoryRegion};
+use crate::{block::SectorBuf, mem::MemoryRegion};
 
 pub struct Loader<'a> {
     file: &'a mut dyn crate::fat::Read,

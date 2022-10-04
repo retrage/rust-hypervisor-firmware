@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::{
+    block::SectorBuf,
     boot,
     bzimage::{self, Kernel},
     common::ascii_strip,
-    devices::block::SectorBuf,
     fat::{self, Read},
 };
 

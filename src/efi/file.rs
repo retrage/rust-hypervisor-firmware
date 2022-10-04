@@ -23,7 +23,7 @@ use r_efi::{
     },
 };
 
-use crate::devices::block::SectorBuf;
+use crate::block::SectorBuf;
 
 #[repr(C)]
 pub struct FileDevicePathProtocol {
