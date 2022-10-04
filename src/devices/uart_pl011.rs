@@ -3,11 +3,13 @@
 
 use core::fmt;
 
-pub struct Pl011SerialPort;
+pub struct Pl011 {
+    base: usize,
+}
 
-impl Pl011SerialPort {
-    pub const fn new() -> Self {
-        Self {}
+impl Pl011 {
+    pub const fn new(base: usize) -> Self {
+        Self { base }
     }
 
     pub fn init(&mut self) {
@@ -15,15 +17,13 @@ impl Pl011SerialPort {
     }
 
     pub fn send(&mut self, data: u8) {
-        // TODO: Configure base address from FDT
-        const BASE_ADDR: *mut u8 = 0x0900_0000 as *mut u8;
         unsafe {
-            core::ptr::write_volatile(BASE_ADDR, data);
+            core::ptr::write_volatile(self.base as *mut u8, data);
         }
     }
 }
 
-impl fmt::Write for Pl011SerialPort {
+impl fmt::Write for Pl011 {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for byte in s.bytes() {
             self.send(byte);
