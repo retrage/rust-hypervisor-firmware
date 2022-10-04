@@ -275,7 +275,7 @@ pub fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Status {
     }
 
     #[cfg(target_arch = "x86_64")]
-    let (year, month, day) = match devices::rtc::read_date() {
+    let (year, month, day) = match devices::cmos::read_date() {
         Ok((y, m, d)) => (y, m, d),
         Err(()) => return Status::DEVICE_ERROR,
     };
@@ -286,7 +286,7 @@ pub fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Status {
     };
 
     #[cfg(target_arch = "x86_64")]
-    let (hour, minute, second) = match devices::rtc::read_time() {
+    let (hour, minute, second) = match devices::cmos::read_time() {
         Ok((h, m, s)) => (h, m, s),
         Err(()) => return Status::DEVICE_ERROR,
     };

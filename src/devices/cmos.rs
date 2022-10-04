@@ -4,15 +4,15 @@
 use atomic_refcell::AtomicRefCell;
 use x86_64::instructions::port::{Port, PortWriteOnly};
 
-static RTC: AtomicRefCell<Rtc> = AtomicRefCell::new(Rtc::new());
+static CMOS: AtomicRefCell<Cmos> = AtomicRefCell::new(Cmos::new());
 
-struct Rtc {
+struct Cmos {
     address_port: PortWriteOnly<u8>,
     data_port: Port<u8>,
     reg_b: Option<u8>,
 }
 
-impl Rtc {
+impl Cmos {
     const fn new() -> Self {
         Self {
             address_port: PortWriteOnly::new(0x70),
@@ -85,9 +85,9 @@ fn bcd2dec(b: u8) -> u8 {
 }
 
 pub fn read_date() -> Result<(u8, u8, u8), ()> {
-    RTC.borrow_mut().read_date()
+    CMOS.borrow_mut().read_date()
 }
 
 pub fn read_time() -> Result<(u8, u8, u8), ()> {
-    RTC.borrow_mut().read_time()
+    CMOS.borrow_mut().read_time()
 }
