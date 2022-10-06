@@ -144,7 +144,8 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn boot::Info
     #[cfg(target_arch = "x86_64")]
     let efi_boot_path = "/EFI/BOOT/BOOTX64.EFI";
     #[cfg(target_arch = "aarch64")]
-    let efi_boot_path = "/EFI/BOOT/BOOTAA64.EFI";
+    // let efi_boot_path = "/EFI/BOOT/BOOTAA64.EFI";
+    let efi_boot_path = "/efi/ubuntu/grubaa64.efi";
     let mut file = match f.open(efi_boot_path) {
         Ok(file) => file,
         Err(err) => {
