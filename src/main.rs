@@ -46,7 +46,8 @@ mod delay;
 mod efi;
 mod fat;
 #[cfg(target_arch = "aarch64")]
-mod fdt;
+// mod fdt;
+mod fdt_v2;
 #[cfg(target_arch = "x86_64")]
 mod gdt;
 #[cfg(all(test, feature = "integration_tests"))]
@@ -193,7 +194,7 @@ pub extern "C" fn rust64_start(#[cfg(not(feature = "coreboot"))] rdi: &pvh::Star
 pub extern "C" fn rust64_start(x0: *const u8) -> ! {
     serial::PORT.borrow_mut().init();
 
-    let info = fdt::StartInfo::new(x0);
+    let info = fdt_v2::StartInfo::new(x0);
 
     if let Some(region) = info.pci_cfg_region() {
         pci::init(region);
@@ -204,7 +205,7 @@ pub extern "C" fn rust64_start(x0: *const u8) -> ! {
 
 fn main(
     #[cfg(target_arch = "x86_64")] info: &dyn boot::Info,
-    #[cfg(target_arch = "aarch64")] info: &fdt::StartInfo,
+    #[cfg(target_arch = "aarch64")] info: &fdt_v2::StartInfo,
 ) -> ! {
     log!("\nBooting...");
 
@@ -212,6 +213,16 @@ fn main(
     {
         const VIRTIO_MMIO_VENDOR_ID: u32 = 0x554d4551;
         const VIRTIO_MMIO_BLOCK_DEVICE_ID: u32 = 0x2;
+        info.with_virtio_mmio_devices(
+            VIRTIO_MMIO_VENDOR_ID,
+            VIRTIO_MMIO_BLOCK_DEVICE_ID,
+            |mmio_device| {
+                let mut mmio_transport = mmio::VirtioMmioTransport::new(mmio_device);
+                let mut device = block::VirtioBlockDevice::new(&mut mmio_transport);
+                boot_from_device(&mut device, info)
+            },
+        );
+        /*
         mmio::with_devices(
             info,
             VIRTIO_MMIO_VENDOR_ID,
@@ -222,6 +233,7 @@ fn main(
                 boot_from_device(&mut device, info)
             },
         );
+        */
     }
 
     pci::print_bus();

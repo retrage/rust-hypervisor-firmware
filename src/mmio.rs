@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2022 Akira Moroo
 
-use fdt_rs::{base::DevTreeNode, prelude::PropReader};
+// use fdt_rs::{base::DevTreeNode, prelude::PropReader};
 
 use crate::{
-    fdt, mem,
+    mem,
     virtio::{Error as VirtioError, VirtioTransport},
 };
 
@@ -127,8 +127,8 @@ impl VirtioTransport for VirtioMmioTransport {
 #[derive(Default)]
 pub struct MmioDevice {
     region: mem::MemoryRegion,
-    vendor_id: u32,
-    device_id: u32,
+    pub vendor_id: u32,
+    pub device_id: u32,
 }
 
 impl MmioDevice {
@@ -156,6 +156,7 @@ impl MmioDevice {
     }
 }
 
+/*
 fn is_virtio_mmio(node: &DevTreeNode) -> bool {
     if let Ok(name) = node.name() {
         return name.starts_with("virtio_mmio@");
@@ -204,3 +205,4 @@ pub fn with_devices<F>(
         }
     }
 }
+*/
