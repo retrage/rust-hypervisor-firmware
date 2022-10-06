@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2022 Akira Moroo
 
+use crate::fdt;
 use crate::mem;
 
 use super::virtio::{Error as VirtioError, VirtioTransport};
@@ -150,5 +151,18 @@ impl MmioDevice {
 
         // device_id: 0x008
         self.device_id = self.read_u32(0x008);
+    }
+}
+
+pub fn with_devices<F>(info: &fdt::StartInfo, vendor_id: u32, device_id: u32, per_device: F)
+where
+    F: Fn(MmioDevice) -> bool,
+{
+    for (base, size) in info.find_all_device_regions("/virtio_mmio") {
+        let mut device = MmioDevice::new(base, size);
+        device.init();
+        if device.vendor_id == vendor_id && device.device_id == device_id && per_device(device) {
+            break;
+        }
     }
 }

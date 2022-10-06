@@ -8,9 +8,6 @@ use crate::{
     mem::MemoryRegion,
 };
 
-#[cfg(target_arch = "aarch64")]
-use crate::mmio::MmioDevice;
-
 pub struct StartInfo<'a> {
     fdt_addr: u64,
     fdt: Fdt<'a>,
@@ -38,28 +35,24 @@ impl StartInfo<'_> {
         Some(MemoryRegion::new(base, length))
     }
 
-    #[cfg(target_arch = "aarch64")]
-    pub fn with_virtio_mmio_devices<F>(&self, vendor_id: u32, device_id: u32, per_device: F)
-    where
-        F: Fn(MmioDevice) -> bool,
-    {
-        for node in self.fdt.find_all_nodes("/virtio_mmio") {
-            let reg = node.property("reg").unwrap();
-            let (base, size) = Self::as_u64_pair(reg.value).unwrap();
-            let mut device = MmioDevice::new(base, size);
-            device.init();
-            if device.vendor_id == vendor_id && device.device_id == device_id && per_device(device)
-            {
-                break;
-            }
-        }
+    pub fn find_all_device_regions<'a>(
+        &'a self,
+        with: &'a str,
+    ) -> impl Iterator<Item = (u64, u64)> + '_ {
+        let mut iter = self.fdt.find_all_nodes(with);
+        core::iter::from_fn(move || {
+            let node = iter.next()?;
+            let reg = node.property("reg")?;
+
+            Self::as_u64_pair(reg.value)
+        })
     }
 
     fn as_u64_pair(value: &[u8]) -> Option<(u64, u64)> {
         assert!(value.len() == 16);
-        let lhs = u64::from_be_bytes(value.get(..8)?.try_into().unwrap());
-        let rhs = u64::from_be_bytes(value.get(8..16)?.try_into().unwrap());
-        Some((lhs, rhs))
+        let first = u64::from_be_bytes(value.get(..8)?.try_into().ok()?);
+        let second = u64::from_be_bytes(value.get(8..16)?.try_into().ok()?);
+        Some((first, second))
     }
 }
 

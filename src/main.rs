@@ -199,7 +199,8 @@ fn main(
     {
         const VIRTIO_MMIO_VENDOR_ID: u32 = 0x554d4551;
         const VIRTIO_MMIO_BLOCK_DEVICE_ID: u32 = 0x2;
-        info.with_virtio_mmio_devices(
+        mmio::with_devices(
+            info,
             VIRTIO_MMIO_VENDOR_ID,
             VIRTIO_MMIO_BLOCK_DEVICE_ID,
             |mmio_device| {
