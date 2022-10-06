@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2022 Akira Moroo
 
-use fdt_rs::{base::DevTreeNode, prelude::PropReader};
-
-use crate::{fdt, mem};
+use crate::mem;
 
 use super::virtio::{Error as VirtioError, VirtioTransport};
 
@@ -126,8 +124,8 @@ impl VirtioTransport for VirtioMmioTransport {
 #[derive(Default)]
 pub struct MmioDevice {
     region: mem::MemoryRegion,
-    vendor_id: u32,
-    device_id: u32,
+    pub vendor_id: u32,
+    pub device_id: u32,
 }
 
 impl MmioDevice {
@@ -152,54 +150,5 @@ impl MmioDevice {
 
         // device_id: 0x008
         self.device_id = self.read_u32(0x008);
-    }
-}
-
-fn is_virtio_mmio(node: &DevTreeNode) -> bool {
-    if let Ok(name) = node.name() {
-        return name.starts_with("virtio_mmio@");
-    }
-    false
-}
-
-fn get_virtio_mmio_info(node: &DevTreeNode) -> Option<(u64, u64)> {
-    let mut props = node.props();
-    while let Ok(Some(prop)) = props.0.next_prop() {
-        if let Ok(name) = prop.name() {
-            if name == "reg" {
-                let raw = prop.raw();
-                let mut buf = [0_u8; 8];
-                buf.clone_from_slice(&raw[0..8]);
-                let base = u64::from_be_bytes(buf);
-                buf.clone_from_slice(&raw[8..16]);
-                let size = u64::from_be_bytes(buf);
-                return Some((base, size));
-            }
-        }
-    }
-    None
-}
-
-pub fn with_devices<F>(
-    info: &fdt::StartInfo,
-    target_vendor_id: u32,
-    target_device_id: u32,
-    per_device: F,
-) where
-    F: Fn(MmioDevice) -> bool,
-{
-    let mut index = 0;
-    while let Some(node) = info.get_node_with(index, is_virtio_mmio) {
-        index += 1;
-        if let Some((base, size)) = get_virtio_mmio_info(&node) {
-            let mut device = MmioDevice::new(base, size);
-            device.init();
-            if device.vendor_id == target_vendor_id
-                && device.device_id == target_device_id
-                && per_device(device)
-            {
-                break;
-            }
-        }
     }
 }
