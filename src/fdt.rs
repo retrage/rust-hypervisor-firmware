@@ -3,10 +3,7 @@
 
 use fdt::Fdt;
 
-use crate::{
-    boot::{E820Entry, Info},
-    mem::MemoryRegion,
-};
+use crate::boot::{E820Entry, Info};
 
 pub struct StartInfo<'a> {
     fdt_addr: u64,
@@ -28,31 +25,26 @@ impl StartInfo<'_> {
         }
     }
 
-    pub fn pci_cfg_region(&self) -> Option<MemoryRegion> {
-        let node = self.fdt.find_compatible(&["pci-host-ecam-generic"])?;
-        let reg = node.property("reg")?;
-        let (base, length) = Self::as_u64_pair(reg.value)?;
-        Some(MemoryRegion::new(base, length))
+    pub fn find_compatible_region(&self, with: &[&str]) -> Option<(*const u8, usize)> {
+        let node = self.fdt.find_compatible(with)?;
+        if let Some(region) = node.reg()?.next() {
+            return Some((region.starting_address, region.size?));
+        }
+        None
     }
 
     pub fn find_all_device_regions<'a>(
         &'a self,
         with: &'a str,
-    ) -> impl Iterator<Item = (u64, u64)> + '_ {
-        let mut iter = self.fdt.find_all_nodes(with);
+    ) -> impl Iterator<Item = (*const u8, usize)> + '_ {
+        let mut node_iter = self.fdt.find_all_nodes(with);
         core::iter::from_fn(move || {
-            let node = iter.next()?;
-            let reg = node.property("reg")?;
-
-            Self::as_u64_pair(reg.value)
+            let node = node_iter.next()?;
+            if let Some(region) = node.reg()?.next() {
+                return Some((region.starting_address, region.size?));
+            }
+            None
         })
-    }
-
-    fn as_u64_pair(value: &[u8]) -> Option<(u64, u64)> {
-        assert!(value.len() == 16);
-        let first = u64::from_be_bytes(value.get(..8)?.try_into().ok()?);
-        let second = u64::from_be_bytes(value.get(8..16)?.try_into().ok()?);
-        Some((first, second))
     }
 }
 

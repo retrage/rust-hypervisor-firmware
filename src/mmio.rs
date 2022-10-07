@@ -125,14 +125,14 @@ impl VirtioTransport for VirtioMmioTransport {
 #[derive(Default)]
 pub struct MmioDevice {
     region: mem::MemoryRegion,
-    pub vendor_id: u32,
-    pub device_id: u32,
+    vendor_id: u32,
+    device_id: u32,
 }
 
 impl MmioDevice {
-    pub fn new(base: u64, size: u64) -> Self {
+    pub fn new(addr: *const u8, size: usize) -> Self {
         Self {
-            region: mem::MemoryRegion::new(base, size),
+            region: mem::MemoryRegion::from_addr(addr, size),
             ..Default::default()
         }
     }
@@ -158,8 +158,8 @@ pub fn with_devices<F>(info: &fdt::StartInfo, vendor_id: u32, device_id: u32, pe
 where
     F: Fn(MmioDevice) -> bool,
 {
-    for (base, size) in info.find_all_device_regions("/virtio_mmio") {
-        let mut device = MmioDevice::new(base, size);
+    for (addr, size) in info.find_all_device_regions("/virtio_mmio") {
+        let mut device = MmioDevice::new(addr, size);
         device.init();
         if device.vendor_id == vendor_id && device.device_id == device_id && per_device(device) {
             break;

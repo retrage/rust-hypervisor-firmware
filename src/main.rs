@@ -182,8 +182,8 @@ pub extern "C" fn rust64_start(x0: *const u8) -> ! {
 
     let info = fdt::StartInfo::new(x0);
 
-    if let Some(region) = info.pci_cfg_region() {
-        pci::init(region);
+    if let Some((addr, size)) = info.find_compatible_region(&["pci-host-ecam-generic"]) {
+        pci::init(mem::MemoryRegion::from_addr(addr, size));
     }
 
     main(&info)

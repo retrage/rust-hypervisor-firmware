@@ -26,6 +26,13 @@ impl MemoryRegion {
         MemoryRegion { base, length }
     }
 
+    pub fn from_addr(addr: *const u8, length: usize) -> Self {
+        MemoryRegion {
+            base: addr as u64,
+            length: length as u64,
+        }
+    }
+
     /// Take a slice and turn it into a region of memory
     pub fn from_bytes(data: &mut [u8]) -> MemoryRegion {
         MemoryRegion {
