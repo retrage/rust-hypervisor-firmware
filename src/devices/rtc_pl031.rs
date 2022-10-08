@@ -4,10 +4,9 @@
 use atomic_refcell::AtomicRefCell;
 use chrono::{DateTime, Datelike, NaiveDateTime, Timelike, Utc};
 
-use crate::mem;
+use crate::{arch::aarch64::layout::map, mem};
 
-// TODO: Configure base address from FDT
-static RTC: AtomicRefCell<Pl031> = AtomicRefCell::new(Pl031::new(0x9010000));
+static RTC: AtomicRefCell<Pl031> = AtomicRefCell::new(Pl031::new(map::mmio::PL031_START));
 
 struct Pl031 {
     region: mem::MemoryRegion,
@@ -16,9 +15,9 @@ struct Pl031 {
 impl Pl031 {
     const RTCDR: u64 = 0x000;
 
-    pub const fn new(base: u64) -> Self {
+    pub const fn new(base: usize) -> Self {
         Self {
-            region: mem::MemoryRegion::new(base, 0x1000),
+            region: mem::MemoryRegion::new(base as u64, 0x1000),
         }
     }
 

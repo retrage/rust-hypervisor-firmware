@@ -20,7 +20,7 @@ use core::fmt;
 use atomic_refcell::AtomicRefCell;
 
 #[cfg(target_arch = "aarch64")]
-use crate::devices::uart_pl011::Pl011 as UartPl011;
+use crate::{arch::aarch64::layout::map, devices::uart_pl011::Pl011 as UartPl011};
 
 #[cfg(target_arch = "x86_64")]
 use uart_16550::SerialPort as Uart16550;
@@ -30,7 +30,8 @@ use uart_16550::SerialPort as Uart16550;
 pub static PORT: AtomicRefCell<Uart16550> = AtomicRefCell::new(unsafe { Uart16550::new(0x3f8) });
 
 #[cfg(target_arch = "aarch64")]
-pub static PORT: AtomicRefCell<UartPl011> = AtomicRefCell::new(UartPl011::new(0x0900_0000));
+pub static PORT: AtomicRefCell<UartPl011> =
+    AtomicRefCell::new(UartPl011::new(map::mmio::PL011_START));
 
 pub struct Serial;
 impl fmt::Write for Serial {

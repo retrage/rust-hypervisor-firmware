@@ -14,7 +14,9 @@ pub mod map {
         pub const END: usize = 0x0040_0000;
     }
     pub mod mmio {
-        pub const START: usize = 0x0040_0000;
+        pub const START: usize = super::fw::END;
+        pub const PL011_START: usize = 0x0900_0000;
+        pub const PL031_START: usize = 0x0901_0000;
         pub const END: usize = 0x4000_0000;
     }
 
@@ -23,7 +25,7 @@ pub mod map {
         const ACPI_SIZE: usize = 0x0020_0000;
         pub const STACK_SIZE: usize = 0x0800_0000;
 
-        pub const START: usize = 0x4000_0000;
+        pub const START: usize = super::mmio::END;
         pub const FDT_START: usize = START;
         pub const ACPI_START: usize = FDT_START + FDT_SIZE;
         pub const KERNEL_START: usize = ACPI_START + ACPI_SIZE;
