@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![feature(core_intrinsics)]
 #![feature(alloc_error_handler)]
 #![feature(stmt_expr_attributes)]
 #![feature(slice_take)]
@@ -172,7 +171,7 @@ pub extern "C" fn rust64_start(#[cfg(not(feature = "coreboot"))] rdi: &pvh::Star
 pub extern "C" fn rust64_start(x0: *const u8) -> ! {
     serial::PORT.borrow_mut().init();
 
-    use crate::arch::aarch64::paging::interface::MMU;
+    use crate::arch::aarch64::paging::interface::Mmu;
 
     unsafe {
         if let Err(e) = arch::aarch64::paging::mmu().enable_mmu_and_caching() {

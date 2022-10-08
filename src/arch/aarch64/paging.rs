@@ -1,4 +1,4 @@
-use core::{intrinsics::unlikely, ops::RangeInclusive};
+use core::ops::RangeInclusive;
 
 use cortex_a::{asm::barrier, registers::*};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -6,7 +6,7 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use super::{layout::KernelAddrSpace, translation_table::TranslationTable};
 
 #[derive(Debug)]
-pub enum MMUEnableError {
+pub enum MmuEnableError {
     AlreadyEnabled,
     Other(&'static str),
 }
@@ -14,8 +14,8 @@ pub enum MMUEnableError {
 pub mod interface {
     use super::*;
 
-    pub trait MMU {
-        unsafe fn enable_mmu_and_caching(&self) -> Result<(), MMUEnableError>;
+    pub trait Mmu {
+        unsafe fn enable_mmu_and_caching(&self) -> Result<(), MmuEnableError>;
 
         fn is_enabled(&self) -> bool;
     }
@@ -176,19 +176,19 @@ impl MemoryManagementUnit {
     }
 }
 
-pub fn mmu() -> &'static impl interface::MMU {
+pub fn mmu() -> &'static impl interface::Mmu {
     &MMU
 }
 
-impl interface::MMU for MemoryManagementUnit {
-    unsafe fn enable_mmu_and_caching(&self) -> Result<(), MMUEnableError> {
-        if unlikely(self.is_enabled()) {
-            return Err(MMUEnableError::AlreadyEnabled);
+impl interface::Mmu for MemoryManagementUnit {
+    unsafe fn enable_mmu_and_caching(&self) -> Result<(), MmuEnableError> {
+        if self.is_enabled() {
+            return Err(MmuEnableError::AlreadyEnabled);
         }
 
         // Fail early if translation granule is not supported.
-        if unlikely(!ID_AA64MMFR0_EL1.matches_all(ID_AA64MMFR0_EL1::TGran64::Supported)) {
-            return Err(MMUEnableError::Other(
+        if !ID_AA64MMFR0_EL1.matches_all(ID_AA64MMFR0_EL1::TGran64::Supported) {
+            return Err(MmuEnableError::Other(
                 "Translation granule not supported in HW",
             ));
         }
@@ -199,7 +199,7 @@ impl interface::MMU for MemoryManagementUnit {
         // Populate translation tables.
         KERNEL_TABLES
             .populate_tt_entries()
-            .map_err(MMUEnableError::Other)?;
+            .map_err(MmuEnableError::Other)?;
 
         // Set the "Translation Table Base Register".
         TTBR0_EL1.set_baddr(KERNEL_TABLES.phys_base_address());
