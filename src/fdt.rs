@@ -25,6 +25,11 @@ impl StartInfo<'_> {
         }
     }
 
+    #[allow(dead_code)]
+    pub fn fdt_addr(&self) -> u64 {
+        self.fdt_addr
+    }
+
     pub fn find_compatible_region(&self, with: &[&str]) -> Option<(*const u8, usize)> {
         let node = self.fdt.find_compatible(with)?;
         if let Some(region) = node.reg()?.next() {
