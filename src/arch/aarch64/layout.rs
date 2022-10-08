@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2022 Akira Moroo
+// Copyright (c) 2021-2022 Andre Richter <andre.o.richter@gmail.com>
+
 use core::ops::RangeInclusive;
 
 use super::paging::*;

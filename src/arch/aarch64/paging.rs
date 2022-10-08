@@ -1,9 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2022 Akira Moroo
+// Copyright (c) 2021-2022 Andre Richter <andre.o.richter@gmail.com>
+
 use core::ops::RangeInclusive;
 
 use cortex_a::{asm::barrier, registers::*};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
-use super::{layout::KernelAddrSpace, translation_table::TranslationTable};
+use super::{layout::KernelAddrSpace, translation::TranslationTable};
 
 #[derive(Debug)]
 pub enum MmuEnableError {

@@ -5,4 +5,4 @@
 pub mod asm;
 mod layout;
 pub mod paging;
-mod translation_table;
+mod translation;
