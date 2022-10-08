@@ -32,7 +32,7 @@ aarch64_start:
   /* x0 typically points to device tree at entry */
 
   /* setup stack */
-  ldr x30, =0xfc000000
+  ldr x30, ={STACK_END}
   mov sp, x30
 
   /* x0: pointer to device tree */
