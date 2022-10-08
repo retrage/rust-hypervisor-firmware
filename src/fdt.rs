@@ -54,7 +54,7 @@ impl Info for StartInfo<'_> {
     }
 
     fn rsdp_addr(&self) -> u64 {
-        self.fdt_addr
+        crate::arch::aarch64::layout::map::dram::ACPI_START as u64
     }
 
     fn cmdline(&self) -> &[u8] {

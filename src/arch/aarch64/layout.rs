@@ -6,20 +6,44 @@ use core::ops::RangeInclusive;
 
 use super::paging::*;
 
-pub mod memory_map {
-    pub const END_INCLUSIVE: usize = 0xffff_ffff; // end of the system memory.
+pub mod map {
+    pub const END: usize = 0x1_0000_0000;
+
+    pub mod fw {
+        pub const START: usize = 0x0000_0000;
+        pub const END: usize = 0x0040_0000;
+    }
+    pub mod mmio {
+        pub const START: usize = 0x0040_0000;
+        pub const END: usize = 0x4000_0000;
+    }
+
+    pub mod dram {
+        const FDT_SIZE: usize = 0x0020_0000;
+        const ACPI_SIZE: usize = 0x0020_0000;
+        pub const STACK_SIZE: usize = 0x0800_0000;
+
+        pub const START: usize = 0x4000_0000;
+        pub const FDT_START: usize = START;
+        pub const ACPI_START: usize = FDT_START + FDT_SIZE;
+        pub const KERNEL_START: usize = ACPI_START + ACPI_SIZE;
+        pub const STACK_START: usize = STACK_END - STACK_SIZE;
+        pub const STACK_END: usize = RESERVED_START;
+        pub const RESERVED_START: usize = 0xfc00_0000;
+        pub const END: usize = super::END;
+    }
 }
 
-pub type KernelAddrSpace = AddressSpace<{ memory_map::END_INCLUSIVE + 1 }>;
+pub type KernelAddrSpace = AddressSpace<{ map::END }>;
 
 const NUM_MEM_RANGES: usize = 3;
 
 pub static LAYOUT: KernelVirtualLayout<NUM_MEM_RANGES> = KernelVirtualLayout::new(
-    memory_map::END_INCLUSIVE,
+    map::END - 1,
     [
         TranslationDescriptor {
             name: "Firmware",
-            virtual_range: RangeInclusive::new(0x0000_0000, 0x003f_ffff),
+            virtual_range: RangeInclusive::new(map::fw::START, map::fw::END - 1),
             physical_range_translation: Translation::Identity,
             attribute_fields: AttributeFields {
                 mem_attributes: MemAttributes::CacheableDRAM,
@@ -29,7 +53,7 @@ pub static LAYOUT: KernelVirtualLayout<NUM_MEM_RANGES> = KernelVirtualLayout::ne
         },
         TranslationDescriptor {
             name: "Device MMIO",
-            virtual_range: RangeInclusive::new(0x0040_0000, 0x3fff_ffff),
+            virtual_range: RangeInclusive::new(map::mmio::START, map::mmio::END - 1),
             physical_range_translation: Translation::Identity,
             attribute_fields: AttributeFields {
                 mem_attributes: MemAttributes::Device,
@@ -39,7 +63,7 @@ pub static LAYOUT: KernelVirtualLayout<NUM_MEM_RANGES> = KernelVirtualLayout::ne
         },
         TranslationDescriptor {
             name: "System Memory",
-            virtual_range: RangeInclusive::new(0x4000_0000, 0xffff_ffff),
+            virtual_range: RangeInclusive::new(map::dram::START, map::dram::END - 1),
             physical_range_translation: Translation::Identity,
             attribute_fields: AttributeFields {
                 mem_attributes: MemAttributes::CacheableDRAM,

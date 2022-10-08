@@ -1204,12 +1204,15 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
     log!("text_end: {:#x}", text_end);
 
     #[cfg(target_arch = "aarch64")]
-    ALLOCATOR.borrow_mut().allocate_pages(
-        efi::ALLOCATE_ADDRESS,
-        efi::UNUSABLE_MEMORY,
-        (0x40400000 - 0x40000000) / PAGE_SIZE,
-        0x40000000,
-    );
+    {
+        use crate::arch::aarch64::layout::map::dram;
+        ALLOCATOR.borrow_mut().allocate_pages(
+            efi::ALLOCATE_ADDRESS,
+            efi::UNUSABLE_MEMORY,
+            (dram::KERNEL_START - dram::START) as u64 / PAGE_SIZE,
+            dram::START as u64,
+        );
+    }
 
     // Add ourselves
     if text_start - ram_min > 0 {
@@ -1227,14 +1230,16 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
         text_start,
     );
 
-    let stack_start = 0xfc000000;
-    let stack_size = 128 * 1024 * 1024;
-    ALLOCATOR.borrow_mut().allocate_pages(
-        efi::ALLOCATE_ADDRESS,
-        efi::RUNTIME_SERVICES_DATA,
-        stack_size / PAGE_SIZE,
-        stack_start - stack_size,
-    );
+    #[cfg(target_arch = "aarch64")]
+    {
+        use crate::arch::aarch64::layout::map::dram;
+        ALLOCATOR.borrow_mut().allocate_pages(
+            efi::ALLOCATE_ADDRESS,
+            efi::RUNTIME_SERVICES_DATA,
+            dram::STACK_SIZE as u64 / PAGE_SIZE,
+            dram::STACK_START as u64,
+        );
+    }
 
     // Add the loaded binary
     ALLOCATOR.borrow_mut().allocate_pages(
