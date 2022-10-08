@@ -2,6 +2,10 @@
 // Copyright (C) 2022 Akira Moroo
 // Copyright (c) 2021-2022 Andre Richter <andre.o.richter@gmail.com>
 
+//! Architectural translation table.
+//!
+//! Only 64 KiB granule is supported.
+
 use core::convert;
 
 use tock_registers::{
@@ -12,9 +16,11 @@ use tock_registers::{
 
 use super::{layout, paging::*};
 
+// A table descriptor, as per ARMv8-A Architecture Reference Manual Figure D5-15.
 register_bitfields! {u64,
     STAGE1_TABLE_DESCRIPTOR [
-        NEXT_LEVEL_TABLE_ADDR_64KiB OFFSET(16) NUMBITS(32) [],
+        /// Physical address of the next descriptor.
+        NEXT_LEVEL_TABLE_ADDR_64KiB OFFSET(16) NUMBITS(32) [], // [47:16]
 
         TYPE OFFSET(1) NUMBITS(1) [
             Block = 0,
@@ -28,30 +34,37 @@ register_bitfields! {u64,
     ]
 }
 
+// A level 3 page descriptor, as per ARMv8-A Architecture Reference Manual Figure D5-17.
 register_bitfields! {u64,
     STAGE1_PAGE_DESCRIPTOR [
+        /// Unprivileged execute-never.
         UXN OFFSET(54) NUMBITS(1) [
             False = 0,
             True = 1
         ],
 
+        /// Privileged execute-never.
         PXN OFFSET(53) NUMBITS(1) [
             False = 0,
             True = 1
         ],
 
+        /// Physical address of the next table descriptor (lvl2) or the page descriptor (lvl3).
         OUTPUT_ADDR_64KiB OFFSET(16) NUMBITS(32) [],
 
+        /// Access flag.
         AF OFFSET(10) NUMBITS(1) [
             False = 0,
             True = 1
         ],
 
+        /// Shareability field.
         SH OFFSET(8) NUMBITS(2) [
             OuterShareable = 0b10,
             InnerShareable = 0b11
         ],
 
+        /// Access Permissions.
         AP OFFSET(6) NUMBITS(2) [
             RW_EL1 = 0b00,
             RW_EL1_EL0 = 0b01,
@@ -59,6 +72,7 @@ register_bitfields! {u64,
             RO_EL1_EL0 = 0b11
         ],
 
+        /// Memory attributes index into the MAIR_EL1 register.
         AttrIndx OFFSET(2) NUMBITS(3) [],
 
         TYPE OFFSET(1) NUMBITS(1) [
@@ -73,12 +87,18 @@ register_bitfields! {u64,
     ]
 }
 
+/// A table descriptor for 64 KiB aperture.
+///
+/// The output points to the next table.
 #[derive(Copy, Clone)]
 #[repr(C)]
 struct TableDescriptor {
     value: u64,
 }
 
+/// A page descriptor with 64 KiB aperture.
+///
+/// The output points to physical memory.
 #[derive(Copy, Clone)]
 #[repr(C)]
 struct PageDescriptor {
@@ -92,15 +112,22 @@ trait StartAddr {
 
 const NUM_LVL2_TABLES: usize = layout::KernelAddrSpace::SIZE >> Granule512MiB::SHIFT;
 
+/// Big monolithic struct for storing the translation tables. Individual levels must be 64 KiB
+/// aligned, so the lvl3 is put first.
 #[repr(C)]
 #[repr(align(65536))]
 pub struct FixedSizeTranslationTable<const NUM_TABLES: usize> {
+    /// Page descriptors, covering 64 KiB windows per entry.
     lvl3: [[PageDescriptor; 8192]; NUM_TABLES],
+
+    /// Table descriptors, covering 512 MiB windows.
     lvl2: [TableDescriptor; NUM_TABLES],
 }
 
+/// A translation table type for the kernel space.
 pub type TranslationTable = FixedSizeTranslationTable<NUM_LVL2_TABLES>;
 
+// The binary is still identity mapped, so we don't need to convert here.
 impl<T, const N: usize> StartAddr for [T; N] {
     fn phys_start_addr_u64(&self) -> u64 {
         self as *const T as u64
@@ -112,10 +139,14 @@ impl<T, const N: usize> StartAddr for [T; N] {
 }
 
 impl TableDescriptor {
+    /// Create an instance.
+    ///
+    /// Descriptor is invalid by default.
     pub const fn new_zeroed() -> Self {
         Self { value: 0 }
     }
 
+    /// Create an instance pointing to the supplied address.
     pub fn from_next_lvl_table_addr(phys_next_lvl_table_addr: usize) -> Self {
         let val = InMemoryRegister::<u64, STAGE1_TABLE_DESCRIPTOR::Register>::new(0);
 
@@ -130,10 +161,12 @@ impl TableDescriptor {
     }
 }
 
+/// Convert the kernel's generic memory attributes to HW-specific attributes of the MMU.
 impl convert::From<AttributeFields>
     for tock_registers::fields::FieldValue<u64, STAGE1_PAGE_DESCRIPTOR::Register>
 {
     fn from(attribute_fields: AttributeFields) -> Self {
+        // Memory attributes.
         let mut desc = match attribute_fields.mem_attributes {
             MemAttributes::CacheableDRAM => {
                 STAGE1_PAGE_DESCRIPTOR::SH::InnerShareable
@@ -145,17 +178,20 @@ impl convert::From<AttributeFields>
             }
         };
 
+        // Access Permissions.
         desc += match attribute_fields.acc_perms {
             AccessPermissions::ReadOnly => STAGE1_PAGE_DESCRIPTOR::AP::RO_EL1,
             AccessPermissions::ReadWrite => STAGE1_PAGE_DESCRIPTOR::AP::RW_EL1,
         };
 
+        // The execute-never attribute is mapped to PXN in AArch64.
         desc += if attribute_fields.execute_never {
             STAGE1_PAGE_DESCRIPTOR::PXN::True
         } else {
             STAGE1_PAGE_DESCRIPTOR::PXN::False
         };
 
+        // Always set unprivileged exectue-never as long as userspace is not implemented yet.
         desc += STAGE1_PAGE_DESCRIPTOR::UXN::True;
 
         desc
@@ -163,10 +199,14 @@ impl convert::From<AttributeFields>
 }
 
 impl PageDescriptor {
+    /// Create an instance.
+    ///
+    /// Descriptor is invalid by default.
     pub const fn new_zeroed() -> Self {
         Self { value: 0 }
     }
 
+    /// Create an instance.
     pub fn from_output_addr(phys_output_addr: usize, attribute_fields: &AttributeFields) -> Self {
         let val = InMemoryRegister::<u64, STAGE1_PAGE_DESCRIPTOR::Register>::new(0);
 
@@ -184,7 +224,9 @@ impl PageDescriptor {
 }
 
 impl<const NUM_TABLES: usize> FixedSizeTranslationTable<NUM_TABLES> {
+    /// Create an instance.
     pub const fn new() -> Self {
+        // Can't have a zero-sized address space.
         assert!(NUM_TABLES > 0);
 
         Self {
@@ -193,6 +235,11 @@ impl<const NUM_TABLES: usize> FixedSizeTranslationTable<NUM_TABLES> {
         }
     }
 
+    /// Iterates over all static translation table entries and fills them at once.
+    ///
+    /// # Safety
+    ///
+    /// - Modifies a `static mut`. Ensure it only happens from here.
     pub unsafe fn populate_tt_entries(&mut self) -> Result<(), &'static str> {
         for (l2_nr, l2_entry) in self.lvl2.iter_mut().enumerate() {
             *l2_entry =
@@ -211,6 +258,7 @@ impl<const NUM_TABLES: usize> FixedSizeTranslationTable<NUM_TABLES> {
         Ok(())
     }
 
+    /// The translation table's base address to be used for programming the MMU.
     pub fn phys_base_address(&self) -> u64 {
         self.lvl2.phys_start_addr_u64()
     }

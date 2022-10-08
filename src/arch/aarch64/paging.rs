@@ -9,15 +9,18 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 use super::{layout::KernelAddrSpace, translation::TranslationTable};
 
+/// MMU enable errors variants.
 #[derive(Debug)]
 pub enum MmuEnableError {
     AlreadyEnabled,
     Other(&'static str),
 }
 
+/// Memory Management interfaces.
 pub mod interface {
     use super::*;
 
+    /// MMU functions.
     pub trait Mmu {
         unsafe fn enable_mmu_and_caching(&self) -> Result<(), MmuEnableError>;
 
@@ -25,10 +28,13 @@ pub mod interface {
     }
 }
 
+/// Describes the characteristics of a translation granule.
 pub struct TranslationGranule<const GRANULE_SIZE: usize>;
 
+/// Describes properties of an address space.
 pub struct AddressSpace<const AS_SIZE: usize>;
 
+/// Architecture agnostic translation types.
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
 pub enum Translation {
@@ -36,58 +42,26 @@ pub enum Translation {
     Offset(usize),
 }
 
+/// Architecture agnostic memory attributes.
 #[derive(Copy, Clone)]
 pub enum MemAttributes {
     CacheableDRAM,
     Device,
 }
 
+/// Architecture agnostic access permissions.
 #[derive(Copy, Clone)]
 pub enum AccessPermissions {
     ReadOnly,
     ReadWrite,
 }
 
+/// Collection of memory attributes.
 #[derive(Copy, Clone)]
 pub struct AttributeFields {
     pub mem_attributes: MemAttributes,
     pub acc_perms: AccessPermissions,
     pub execute_never: bool,
-}
-
-pub struct TranslationDescriptor {
-    pub name: &'static str,
-    pub virtual_range: RangeInclusive<usize>,
-    pub physical_range_translation: Translation,
-    pub attribute_fields: AttributeFields,
-}
-
-pub struct KernelVirtualLayout<const NUM_SPECIAL_RANGES: usize> {
-    max_virt_addr_inclusive: usize,
-    inner: [TranslationDescriptor; NUM_SPECIAL_RANGES],
-}
-
-impl<const GRANULE_SIZE: usize> TranslationGranule<GRANULE_SIZE> {
-    pub const SIZE: usize = Self::size_checked();
-    pub const SHIFT: usize = Self::SIZE.trailing_zeros() as usize;
-    const fn size_checked() -> usize {
-        assert!(GRANULE_SIZE.is_power_of_two());
-
-        GRANULE_SIZE
-    }
-}
-
-impl<const AS_SIZE: usize> AddressSpace<AS_SIZE> {
-    pub const SIZE: usize = Self::size_checked();
-    pub const SIZE_SHIFT: usize = Self::SIZE.trailing_zeros() as usize;
-
-    const fn size_checked() -> usize {
-        assert!(AS_SIZE.is_power_of_two());
-
-        Self::arch_address_space_size_sanity_checks();
-
-        AS_SIZE
-    }
 }
 
 impl Default for AttributeFields {
@@ -100,7 +74,56 @@ impl Default for AttributeFields {
     }
 }
 
+/// Architecture agnostic descriptor for a memory range.
+pub struct TranslationDescriptor {
+    pub name: &'static str,
+    pub virtual_range: RangeInclusive<usize>,
+    pub physical_range_translation: Translation,
+    pub attribute_fields: AttributeFields,
+}
+
+/// Type for expressing the kernel's virtual memory layout.
+pub struct KernelVirtualLayout<const NUM_SPECIAL_RANGES: usize> {
+    /// The last (inclusive) address of the address space.
+    max_virt_addr_inclusive: usize,
+
+    /// Array of descriptors for non-standard (normal cacheable DRAM) memory regions.
+    inner: [TranslationDescriptor; NUM_SPECIAL_RANGES],
+}
+
+impl<const GRANULE_SIZE: usize> TranslationGranule<GRANULE_SIZE> {
+    /// The granule's size.
+    pub const SIZE: usize = Self::size_checked();
+
+    /// The granule's shift, aka log2(size).
+    pub const SHIFT: usize = Self::SIZE.trailing_zeros() as usize;
+
+    const fn size_checked() -> usize {
+        assert!(GRANULE_SIZE.is_power_of_two());
+
+        GRANULE_SIZE
+    }
+}
+
+impl<const AS_SIZE: usize> AddressSpace<AS_SIZE> {
+    /// The address space size.
+    pub const SIZE: usize = Self::size_checked();
+
+    /// The address space shift, aka log2(size).
+    pub const SIZE_SHIFT: usize = Self::SIZE.trailing_zeros() as usize;
+
+    const fn size_checked() -> usize {
+        assert!(AS_SIZE.is_power_of_two());
+
+        // Check for architectural restrictions as well.
+        Self::arch_address_space_size_sanity_checks();
+
+        AS_SIZE
+    }
+}
+
 impl<const NUM_SPECIAL_RANGES: usize> KernelVirtualLayout<{ NUM_SPECIAL_RANGES }> {
+    /// Create a new instance.
     pub const fn new(max: usize, layout: [TranslationDescriptor; NUM_SPECIAL_RANGES]) -> Self {
         Self {
             max_virt_addr_inclusive: max,
@@ -108,6 +131,11 @@ impl<const NUM_SPECIAL_RANGES: usize> KernelVirtualLayout<{ NUM_SPECIAL_RANGES }
         }
     }
 
+    /// For a virtual address, find and return the physical output address and corresponding
+    /// attributes.
+    ///
+    /// If the address is not found in `inner`, return an identity mapped default with normal
+    /// cacheable DRAM attributes.
     pub fn virt_addr_properties(
         &self,
         virt_addr: usize,
@@ -131,37 +159,53 @@ impl<const NUM_SPECIAL_RANGES: usize> KernelVirtualLayout<{ NUM_SPECIAL_RANGES }
     }
 }
 
+/// Memory Management Unit type.
 struct MemoryManagementUnit;
 
 pub type Granule512MiB = TranslationGranule<{ 512 * 1024 * 1024 }>;
 pub type Granule64KiB = TranslationGranule<{ 64 * 1024 }>;
 
+/// Constants for indexing the MAIR_EL1.
 pub mod mair {
     pub const DEVICE: u64 = 0;
     pub const NORMAL: u64 = 1;
 }
 
+/// The kernel translation tables.
+///
+/// # Safety
+///
+/// - Supposed to land in `.bss`. Therefore, ensure that all initial member values boil down to "0".
 static mut KERNEL_TABLES: TranslationTable = TranslationTable::new();
 
 static MMU: MemoryManagementUnit = MemoryManagementUnit;
 
 impl<const AS_SIZE: usize> AddressSpace<AS_SIZE> {
+    /// Checks for architectural restrictions.
     pub const fn arch_address_space_size_sanity_checks() {
+        // Size must be at least one full 512 MiB table.
         assert!((AS_SIZE % Granule512MiB::SIZE) == 0);
 
+        // Check for 48 bit virtual address size as maximum, which is supported by any ARMv8
+        // version.
         assert!(AS_SIZE <= (1 << 48));
     }
 }
 
 impl MemoryManagementUnit {
+    /// Setup function for the MAIR_EL1 register.
     fn setup_mair(&self) {
+        // Define the memory types being mapped.
         MAIR_EL1.write(
+            // Attribute 1 - Cacheable normal DRAM.
             MAIR_EL1::Attr1_Normal_Outer::WriteBack_NonTransient_ReadWriteAlloc
                 + MAIR_EL1::Attr1_Normal_Inner::WriteBack_NonTransient_ReadWriteAlloc
+                // Attribute 0 - Device.
                 + MAIR_EL1::Attr0_Device::nonGathering_nonReordering_EarlyWriteAck,
         );
     }
 
+    /// Configure various settings of stage 1 of the EL1 translation regime.
     fn configure_translation_control(&self) {
         let t0sz = (64 - KernelAddrSpace::SIZE_SHIFT) as u64;
 
@@ -180,6 +224,7 @@ impl MemoryManagementUnit {
     }
 }
 
+/// Return a reference to the MMU instance.
 pub fn mmu() -> &'static impl interface::Mmu {
     &MMU
 }
