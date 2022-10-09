@@ -30,7 +30,7 @@ mod tests {
 
     static COUNTER: AtomicUsize = AtomicUsize::new(6);
 
-    struct GuestNetworkConfig {
+    pub struct GuestNetworkConfig {
         guest_ip: String,
         host_ip: String,
         guest_mac: String,
@@ -59,11 +59,11 @@ mod tests {
         }
     }
 
-    trait CloudInit {
+    pub trait CloudInit {
         fn prepare(&self, tmp_dir: &TempDir, network: &GuestNetworkConfig) -> String;
     }
 
-    struct ClearCloudInit {}
+    pub struct ClearCloudInit {}
     impl CloudInit for ClearCloudInit {
         fn prepare(&self, tmp_dir: &TempDir, network: &GuestNetworkConfig) -> String {
             let cloudinit_file_path =
@@ -116,7 +116,7 @@ mod tests {
         }
     }
 
-    struct UbuntuCloudInit {}
+    pub struct UbuntuCloudInit {}
     impl CloudInit for UbuntuCloudInit {
         fn prepare(&self, tmp_dir: &TempDir, network: &GuestNetworkConfig) -> String {
             let cloudinit_file_path =
@@ -485,7 +485,79 @@ mod tests {
     mod linux {
         use crate::integration::tests::*;
 
-        fn spawn_ch(tmp_dir: &TempDir, os: &str, ci: &str, net: &GuestNetworkConfig) -> Child {
+        #[cfg(target_arch = "aarch64")]
+        mod aarch64 {
+            use super::*;
+
+            const BIONIC_IMAGE_NAME: &str = "bionic-server-cloudimg-arm64.raw";
+
+            #[test]
+            fn test_boot_ch_bionic() {
+                test_boot(BIONIC_IMAGE_NAME, &UbuntuCloudInit {}, spawn_ch)
+            }
+        }
+
+        #[cfg(target_arch = "x86_64")]
+        mod x86_64 {
+            use super::*;
+
+            const BIONIC_IMAGE_NAME: &str = "bionic-server-cloudimg-amd64-raw.img";
+            const FOCAL_IMAGE_NAME: &str = "focal-server-cloudimg-amd64-raw.img";
+            const JAMMY_IMAGE_NAME: &str = "jammy-server-cloudimg-amd64-raw.img";
+            const CLEAR_IMAGE_NAME: &str = "clear-31311-cloudguest.img";
+
+            #[test]
+            fn test_boot_qemu_bionic() {
+                test_boot(BIONIC_IMAGE_NAME, &UbuntuCloudInit {}, spawn_qemu)
+            }
+
+            #[test]
+            fn test_boot_qemu_focal() {
+                test_boot(FOCAL_IMAGE_NAME, &UbuntuCloudInit {}, spawn_qemu)
+            }
+
+            #[test]
+            fn test_boot_qemu_jammy() {
+                test_boot(JAMMY_IMAGE_NAME, &UbuntuCloudInit {}, spawn_qemu)
+            }
+
+            #[test]
+            fn test_boot_qemu_clear() {
+                test_boot(CLEAR_IMAGE_NAME, &ClearCloudInit {}, spawn_qemu)
+            }
+
+            #[test]
+            #[cfg(not(feature = "coreboot"))]
+            fn test_boot_ch_bionic() {
+                test_boot(BIONIC_IMAGE_NAME, &UbuntuCloudInit {}, spawn_ch)
+            }
+
+            #[test]
+            #[cfg(not(feature = "coreboot"))]
+            fn test_boot_ch_focal() {
+                test_boot(FOCAL_IMAGE_NAME, &UbuntuCloudInit {}, spawn_ch)
+            }
+
+            #[test]
+            #[cfg(not(feature = "coreboot"))]
+            fn test_boot_ch_jammy() {
+                test_boot(JAMMY_IMAGE_NAME, &UbuntuCloudInit {}, spawn_ch)
+            }
+
+            #[test]
+            #[cfg(not(feature = "coreboot"))]
+            fn test_boot_ch_clear() {
+                test_boot(CLEAR_IMAGE_NAME, &ClearCloudInit {}, spawn_ch)
+            }
+        }
+
+        fn spawn_ch_common(
+            tmp_dir: &TempDir,
+            fw: &Firmware,
+            os: &str,
+            ci: &str,
+            net: &GuestNetworkConfig,
+        ) -> Child {
             let clh_path = dirs::home_dir()
                 .unwrap()
                 .join("workloads")
@@ -496,8 +568,8 @@ mod tests {
                 "off",
                 "--serial",
                 "tty",
-                "--kernel",
-                "target/x86_64-unknown-none/release/hypervisor-fw",
+                fw.fw_type,
+                fw.path,
                 "--disk",
                 &format!("path={}", os),
                 &format!("path={}", ci),
@@ -513,6 +585,20 @@ mod tests {
                 .stderr(Stdio::from(stderr))
                 .spawn()
                 .expect("Expect launching Cloud Hypervisor to succeed")
+        }
+
+        fn spawn_ch(tmp_dir: &TempDir, os: &str, ci: &str, net: &GuestNetworkConfig) -> Child {
+            #[cfg(target_arch = "x86_64")]
+            let target = "x86_64-unknown-none";
+            #[cfg(target_arch = "aarch64")]
+            let target = "aarch64-unknown-none";
+
+            let fw_path = format!("target/{target}/release/hypervisor-fw");
+            let fw = Firmware {
+                fw_type: "--kernel",
+                path: &fw_path,
+            };
+            spawn_ch_common(tmp_dir, &fw, os, ci, net)
         }
 
         fn spawn_qemu_common<'a>(
@@ -590,7 +676,7 @@ mod tests {
         type HypervisorSpawn =
             fn(tmp_dir: &TempDir, os: &str, ci: &str, net: &GuestNetworkConfig) -> Child;
 
-        fn test_boot(image_name: &str, cloud_init: &dyn CloudInit, spawn: HypervisorSpawn) {
+        pub fn test_boot(image_name: &str, cloud_init: &dyn CloudInit, spawn: HypervisorSpawn) {
             let tmp_dir = TempDir::new().expect("Expect creating temporary directory to succeed");
             let net = GuestNetworkConfig::new(COUNTER.fetch_add(1, Ordering::SeqCst) as u8);
             let ci = cloud_init.prepare(&tmp_dir, &net);
@@ -613,57 +699,9 @@ mod tests {
 
             handle_child_output(&tmp_dir, r, &output);
         }
-
-        const BIONIC_IMAGE_NAME: &str = "bionic-server-cloudimg-amd64-raw.img";
-        const FOCAL_IMAGE_NAME: &str = "focal-server-cloudimg-amd64-raw.img";
-        const JAMMY_IMAGE_NAME: &str = "jammy-server-cloudimg-amd64-raw.img";
-        const CLEAR_IMAGE_NAME: &str = "clear-31311-cloudguest.img";
-
-        #[test]
-        fn test_boot_qemu_bionic() {
-            test_boot(BIONIC_IMAGE_NAME, &UbuntuCloudInit {}, spawn_qemu)
-        }
-
-        #[test]
-        fn test_boot_qemu_focal() {
-            test_boot(FOCAL_IMAGE_NAME, &UbuntuCloudInit {}, spawn_qemu)
-        }
-
-        #[test]
-        fn test_boot_qemu_jammy() {
-            test_boot(JAMMY_IMAGE_NAME, &UbuntuCloudInit {}, spawn_qemu)
-        }
-
-        #[test]
-        fn test_boot_qemu_clear() {
-            test_boot(CLEAR_IMAGE_NAME, &ClearCloudInit {}, spawn_qemu)
-        }
-
-        #[test]
-        #[cfg(not(feature = "coreboot"))]
-        fn test_boot_ch_bionic() {
-            test_boot(BIONIC_IMAGE_NAME, &UbuntuCloudInit {}, spawn_ch)
-        }
-
-        #[test]
-        #[cfg(not(feature = "coreboot"))]
-        fn test_boot_ch_focal() {
-            test_boot(FOCAL_IMAGE_NAME, &UbuntuCloudInit {}, spawn_ch)
-        }
-
-        #[test]
-        #[cfg(not(feature = "coreboot"))]
-        fn test_boot_ch_jammy() {
-            test_boot(JAMMY_IMAGE_NAME, &UbuntuCloudInit {}, spawn_ch)
-        }
-
-        #[test]
-        #[cfg(not(feature = "coreboot"))]
-        fn test_boot_ch_clear() {
-            test_boot(CLEAR_IMAGE_NAME, &ClearCloudInit {}, spawn_ch)
-        }
     }
 
+    #[cfg(target_arch = "x86_64")]
     mod windows {
         use crate::integration::tests::*;
 
