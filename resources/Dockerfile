@@ -51,6 +51,25 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+	# On AArch64, `setcap` binary should be installed via `libcap2-bin`.
+	# The `setcap` binary is used in integration tests.
+	# `libguestfs-tools` is used for modifying cloud image kernel, and it requires
+	# kernel (any version) image in `/boot` and modules in `/lib/modules`.
+	apt-get update \
+	&& apt-get -yq upgrade \
+	&& DEBIAN_FRONTEND=noninteractive apt-get install -yq \
+	libcap2-bin \
+	libguestfs-tools \
+	linux-image-generic \
+	autotools-dev \
+	autoconf \
+	automake \
+	perl \
+	texinfo \
+	&& apt-get clean \
+	&& rm -rf /var/lib/apt/lists/*;	fi
+
 # Fix the libssl-dev install
 RUN export ARCH="$(uname -m)" \
     && cp /usr/include/$ARCH-linux-gnu/openssl/opensslconf.h /usr/include/openssl/
@@ -77,7 +96,8 @@ RUN echo 'source $CARGO_HOME/env' >> $HOME/.bashrc \
     && ln -s $CARGO_HOME/env $HOME/.cargo/env
 
 # Checkout coreboot repository and setup cross toolchains
-RUN git clone --quiet --branch "$COREBOOT_VERSION" --depth 1 https://github.com/coreboot/coreboot.git "$COREBOOT_DIR" \
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+	git clone --quiet --branch "$COREBOOT_VERSION" --depth 1 https://github.com/coreboot/coreboot.git "$COREBOOT_DIR" \
     && cd "$COREBOOT_DIR" \
     && git submodule update --init --checkout \
-    && make crossgcc-i386 CPUS=`nproc`
+    && make crossgcc-i386 CPUS=`nproc`; fi

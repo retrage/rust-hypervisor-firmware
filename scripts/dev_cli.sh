@@ -399,6 +399,7 @@ cmd_build-container() {
     mkdir -p $BUILD_DIR
     cp $RHF_DOCKERFILE $BUILD_DIR
 
+    [ "$(uname -m)" = "aarch64" ] && TARGETARCH="arm64"
     [ $(uname -m) = "x86_64" ] && TARGETARCH="amd64"
     RUST_TOOLCHAIN="$(rustup show active-toolchain | cut -d ' ' -f1)"
 
