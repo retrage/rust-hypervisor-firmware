@@ -334,7 +334,7 @@ cmd_tests() {
 	       --volume "$RHF_WORKLOADS:$CTR_RHF_WORKLOADS" \
 	       --env USER="root" \
 	       "$CTR_IMAGE" \
-	       ./scripts/run_integration_tests.sh "$@" || fix_dir_perms $? || exit $?
+	       ./scripts/run_integration_tests_"$(uname -m)".sh "$@" || fix_dir_perms $? || exit $?
     fi
 
     if [ "$integration_coreboot" = true ] ;  then
