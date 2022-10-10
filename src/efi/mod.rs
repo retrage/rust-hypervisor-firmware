@@ -36,7 +36,6 @@ use r_efi::{
 };
 
 use crate::boot;
-#[cfg(target_arch = "x86_64")]
 use crate::rtc;
 
 mod alloc;
@@ -231,21 +230,15 @@ pub fn get_time(time: *mut Time, _: *mut TimeCapabilities) -> Status {
         return Status::INVALID_PARAMETER;
     }
 
-    #[cfg(target_arch = "x86_64")]
     let (year, month, day) = match rtc::read_date() {
         Ok((y, m, d)) => (y, m, d),
         Err(()) => return Status::DEVICE_ERROR,
     };
-    #[cfg(not(target_arch = "x86_64"))]
-    let (year, month, day) = (0, 0, 0);
 
-    #[cfg(target_arch = "x86_64")]
     let (hour, minute, second) = match rtc::read_time() {
         Ok((h, m, s)) => (h, m, s),
         Err(()) => return Status::DEVICE_ERROR,
     };
-    #[cfg(not(target_arch = "x86_64"))]
-    let (hour, minute, second) = (0, 0, 0);
 
     unsafe {
         (*time).year = 2000 + year as u16;
