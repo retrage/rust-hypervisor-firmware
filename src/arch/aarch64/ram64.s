@@ -22,10 +22,10 @@ ram64_start:
 
 jump_to_rust:
   /* x0 typically points to device tree at entry */
-  ldr x0, =0x40000000
+  ldr x0, ={FDT_START}
 
   /* setup stack */
-  ldr x30, =0xfc000000
+  ldr x30, ={STACK_END}
   mov sp, x30
 
   /* x0: pointer to device tree */
