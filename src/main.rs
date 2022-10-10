@@ -54,7 +54,6 @@ mod pci;
 mod pe;
 #[cfg(target_arch = "x86_64")]
 mod pvh;
-#[cfg(target_arch = "x86_64")]
 mod rtc;
 #[cfg(target_arch = "aarch64")]
 mod rtc_pl031;
