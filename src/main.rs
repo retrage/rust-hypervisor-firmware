@@ -57,6 +57,8 @@ mod pe;
 mod pvh;
 #[cfg(target_arch = "x86_64")]
 mod rtc;
+#[cfg(target_arch = "aarch64")]
+mod uart_pl011;
 mod virtio;
 
 #[cfg(all(not(test), feature = "log-panic"))]
