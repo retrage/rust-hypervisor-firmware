@@ -7,6 +7,8 @@ use core::ops::RangeInclusive;
 use cortex_a::{asm::barrier, registers::*};
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
+use self::interface::Mmu;
+
 use super::{layout::KernelAddrSpace, translation::TranslationTable};
 
 /// MMU enable errors variants.
@@ -225,7 +227,7 @@ impl MemoryManagementUnit {
 }
 
 /// Return a reference to the MMU instance.
-pub fn mmu() -> &'static impl interface::Mmu {
+fn mmu() -> &'static impl interface::Mmu {
     &MMU
 }
 
@@ -272,5 +274,13 @@ impl interface::Mmu for MemoryManagementUnit {
     #[inline(always)]
     fn is_enabled(&self) -> bool {
         SCTLR_EL1.matches_all(SCTLR_EL1::M::Enable)
+    }
+}
+
+pub fn setup() {
+    unsafe {
+        if let Err(e) = mmu().enable_mmu_and_caching() {
+            panic!("Failed to setup paging: {:?}", e);
+        }
     }
 }
