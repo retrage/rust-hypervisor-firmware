@@ -38,6 +38,7 @@ impl StartInfo<'_> {
         None
     }
 
+    #[allow(dead_code)]
     pub fn find_all_device_regions<'a>(
         &'a self,
         with: &'a str,
