@@ -116,16 +116,23 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn boot::Info
     }
 
     log!("Using EFI boot.");
-    let mut file = match f.open("/EFI/BOOT/BOOTX64 EFI") {
+    #[cfg(target_arch = "aarch64")]
+    let efi_boot_path = "/EFI/BOOT/BOOTAA64.EFI";
+    #[cfg(target_arch = "x86_64")]
+    let efi_boot_path = "/EFI/BOOT/BOOTX64 EFI";
+    let mut file = match f.open(efi_boot_path) {
         Ok(file) => file,
         Err(err) => {
             log!("Failed to load default EFI binary: {:?}", err);
             return false;
         }
     };
-    log!("Found bootloader (BOOTX64.EFI)");
+    log!("Found bootloader: {}", efi_boot_path);
 
     let mut l = pe::Loader::new(&mut file);
+    #[cfg(target_arch = "aarch64")]
+    let load_addr = arch::aarch64::layout::map::dram::KERNEL_START as u64;
+    #[cfg(target_arch = "x86_64")]
     let load_addr = 0x20_0000;
     let (entry_addr, load_addr, size) = match l.load(load_addr) {
         Ok(load_info) => load_info,
@@ -157,13 +164,22 @@ pub extern "C" fn rust64_start(#[cfg(not(feature = "coreboot"))] pvh_info: &pvh:
     main(info)
 }
 
-#[cfg(not(target_arch = "x86_64"))]
 #[no_mangle]
-pub extern "C" fn rust64_start() -> ! {
-    loop {}
+#[cfg(target_arch = "aarch64")]
+pub extern "C" fn rust64_start(x0: *const u8) -> ! {
+    serial::PORT.borrow_mut().init();
+
+    arch::aarch64::paging::setup();
+
+    let info = fdt::StartInfo::new(x0);
+
+    if let Some((base, length)) = info.find_compatible_region(&["pci-host-ecam-generic"]) {
+        pci::init(base as u64, length as u64);
+    }
+
+    main(&info)
 }
 
-#[cfg(target_arch = "x86_64")]
 fn main(info: &dyn boot::Info) -> ! {
     log!("\nBooting with {}", info.name());
 
