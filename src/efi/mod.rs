@@ -927,7 +927,6 @@ extern "C" {
 }
 
 const PAGE_SIZE: u64 = 4096;
-const HEAP_SIZE: usize = 256 * 1024 * 1024;
 
 // Populate allocator from E820, fixed ranges for the firmware and the loaded binary.
 fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64) {
@@ -1012,25 +1011,47 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
     );
 
     // Initialize heap allocator
-    init_heap_allocator(HEAP_SIZE);
+    init_heap_allocator();
 }
 
 #[cfg(not(test))]
-fn init_heap_allocator(size: usize) {
+fn init_heap_allocator() {
+    #[cfg(target_arch = "aarch64")]
+    let heap_start = {
+        use crate::arch::aarch64::layout::map::dram;
+        dram::HEAP_START
+    };
+    #[cfg(target_arch = "x86_64")]
+    let heap_start = 0;
+
+    #[cfg(target_arch = "aarch64")]
+    let heap_size = {
+        use crate::arch::aarch64::layout::map::dram;
+        dram::HEAP_SIZE
+    };
+    #[cfg(target_arch = "x86_64")]
+    let heap_size = 0x1000_0000;
+
+    let allocate_type = if heap_start != 0 {
+        efi::ALLOCATE_ADDRESS
+    } else {
+        efi::ALLOCATE_ANY_PAGES
+    };
+
     let (status, heap_start) = ALLOCATOR.borrow_mut().allocate_pages(
-        efi::ALLOCATE_ANY_PAGES,
+        allocate_type,
         efi::BOOT_SERVICES_CODE,
-        size as u64 / PAGE_SIZE,
-        0,
+        heap_size as u64 / PAGE_SIZE,
+        heap_start as u64,
     );
     assert!(status == Status::SUCCESS);
     unsafe {
-        HEAP_ALLOCATOR.lock().init(heap_start as *mut _, size);
+        HEAP_ALLOCATOR.lock().init(heap_start as *mut _, heap_size);
     }
 }
 
 #[cfg(test)]
-fn init_heap_allocator(_: usize) {}
+fn init_heap_allocator() {}
 
 #[repr(C)]
 struct LoadedImageWrapper {
