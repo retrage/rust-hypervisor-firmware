@@ -2,9 +2,21 @@
 // Copyright (C) 2022 Akira Moroo
 // Copyright (c) 2021-2022 Andre Richter <andre.o.richter@gmail.com>
 
-use core::ops::RangeInclusive;
+use core::{
+    cell::UnsafeCell,
+    ops::{Range, RangeInclusive},
+};
+
+use crate::layout::{MemoryAttribute, MemoryDescriptor, MemoryLayout};
 
 use super::paging::*;
+
+extern "Rust" {
+    static code_start: UnsafeCell<()>;
+    static code_end: UnsafeCell<()>;
+    static data_start: UnsafeCell<()>;
+    static data_end: UnsafeCell<()>;
+}
 
 pub mod map {
     pub const END: usize = 0x1_0000_0000;
@@ -23,14 +35,12 @@ pub mod map {
     pub mod dram {
         const FDT_SIZE: usize = 0x0020_0000;
         const ACPI_SIZE: usize = 0x0020_0000;
-        pub const HEAP_SIZE: usize = 0x1000_0000;
         pub const STACK_SIZE: usize = 0x0800_0000;
 
         pub const START: usize = super::mmio::END;
         pub const FDT_START: usize = START;
         pub const ACPI_START: usize = FDT_START + FDT_SIZE;
         pub const KERNEL_START: usize = ACPI_START + ACPI_SIZE;
-        pub const HEAP_START: usize = STACK_START - HEAP_SIZE;
         pub const STACK_START: usize = STACK_END - STACK_SIZE;
         pub const STACK_END: usize = RESERVED_START;
         pub const RESERVED_START: usize = 0xfc00_0000;
@@ -81,3 +91,44 @@ pub static LAYOUT: KernelVirtualLayout<NUM_MEM_RANGES> = KernelVirtualLayout::ne
 pub fn virt_mem_layout() -> &'static KernelVirtualLayout<NUM_MEM_RANGES> {
     &LAYOUT
 }
+
+pub fn reserved_range() -> Range<usize> {
+    map::dram::START..map::dram::KERNEL_START
+}
+
+pub fn code_range() -> Range<usize> {
+    unsafe { (code_start.get() as _)..(code_end.get() as _) }
+}
+
+pub fn data_range() -> Range<usize> {
+    unsafe { (data_start.get() as _)..(data_end.get() as _) }
+}
+
+pub fn stack_range() -> Range<usize> {
+    map::dram::STACK_START..map::dram::STACK_END
+}
+
+const NUM_MEM_DESCS: usize = 4;
+
+pub static MEM_LAYOUT: MemoryLayout<NUM_MEM_DESCS> = [
+    MemoryDescriptor {
+        name: "Reserved",
+        range: reserved_range,
+        attribute: MemoryAttribute::Unusable,
+    },
+    MemoryDescriptor {
+        name: "Code",
+        range: code_range,
+        attribute: MemoryAttribute::Code,
+    },
+    MemoryDescriptor {
+        name: "Data",
+        range: data_range,
+        attribute: MemoryAttribute::Data,
+    },
+    MemoryDescriptor {
+        name: "Stack",
+        range: stack_range,
+        attribute: MemoryAttribute::Data,
+    },
+];
