@@ -47,6 +47,7 @@ mod fat;
 mod fdt;
 #[cfg(all(test, feature = "integration_tests"))]
 mod integration;
+mod layout;
 mod loader;
 mod mem;
 mod part;
