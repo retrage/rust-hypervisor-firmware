@@ -35,6 +35,7 @@ use r_efi::{
 };
 
 use crate::boot;
+use crate::layout;
 use crate::rtc;
 
 mod alloc;
@@ -914,18 +915,6 @@ fn extract_path(device_path: &DevicePathProtocol, path: &mut [u8]) {
     }
 }
 
-extern "C" {
-    #[link_name = "ram_min"]
-    static RAM_MIN: c_void;
-    #[link_name = "text_start"]
-    static TEXT_START: c_void;
-    #[link_name = "text_end"]
-    static TEXT_END: c_void;
-    #[cfg(target_arch = "x86_64")]
-    #[link_name = "stack_start"]
-    static STACK_START: c_void;
-}
-
 const PAGE_SIZE: u64 = 4096;
 const HEAP_SIZE: usize = 256 * 1024 * 1024;
 
@@ -943,63 +932,23 @@ fn populate_allocator(info: &dyn boot::Info, image_address: u64, image_size: u64
         }
     }
 
-    let ram_min = unsafe { &RAM_MIN as *const _ as u64 };
-    let text_start = unsafe { &TEXT_START as *const _ as u64 };
-    let text_end = unsafe { &TEXT_END as *const _ as u64 };
     #[cfg(target_arch = "x86_64")]
-    let stack_start = unsafe { &STACK_START as *const _ as u64 };
-    assert!(ram_min % PAGE_SIZE == 0);
-    assert!(text_start % PAGE_SIZE == 0);
-    assert!(text_end % PAGE_SIZE == 0);
-    #[cfg(target_arch = "x86_64")]
-    assert!(stack_start % PAGE_SIZE == 0);
+    use crate::arch::x86_64::layout::MEM_LAYOUT;
 
     #[cfg(target_arch = "aarch64")]
-    {
-        use crate::arch::aarch64::layout::map::dram;
-        ALLOCATOR.borrow_mut().allocate_pages(
-            efi::ALLOCATE_ADDRESS,
-            efi::UNUSABLE_MEMORY,
-            (dram::KERNEL_START - dram::START) as u64 / PAGE_SIZE,
-            dram::START as u64,
-        );
-    }
+    use crate::arch::aarch64::layout::MEM_LAYOUT;
 
-    #[cfg(target_arch = "x86_64")]
-    {
-        // Add ourselves
+    for descriptor in MEM_LAYOUT {
+        let memory_type = match descriptor.attribute {
+            layout::MemoryAttribute::Code => efi::RUNTIME_SERVICES_CODE,
+            layout::MemoryAttribute::Data => efi::RUNTIME_SERVICES_DATA,
+            layout::MemoryAttribute::Unusable => efi::UNUSABLE_MEMORY,
+        };
         ALLOCATOR.borrow_mut().allocate_pages(
             efi::ALLOCATE_ADDRESS,
-            efi::RUNTIME_SERVICES_DATA,
-            (text_start - ram_min) / PAGE_SIZE,
-            ram_min,
-        );
-    }
-    ALLOCATOR.borrow_mut().allocate_pages(
-        efi::ALLOCATE_ADDRESS,
-        efi::RUNTIME_SERVICES_CODE,
-        (text_end - text_start) / PAGE_SIZE,
-        text_start,
-    );
-
-    #[cfg(target_arch = "x86_64")]
-    {
-        ALLOCATOR.borrow_mut().allocate_pages(
-            efi::ALLOCATE_ADDRESS,
-            efi::RUNTIME_SERVICES_DATA,
-            (stack_start - text_end) / PAGE_SIZE,
-            text_end,
-        );
-    }
-
-    #[cfg(target_arch = "aarch64")]
-    {
-        use crate::arch::aarch64::layout::map::dram;
-        ALLOCATOR.borrow_mut().allocate_pages(
-            efi::ALLOCATE_ADDRESS,
-            efi::RUNTIME_SERVICES_DATA,
-            dram::STACK_SIZE as u64 / PAGE_SIZE,
-            dram::STACK_START as u64,
+            memory_type,
+            descriptor.page_count() as u64,
+            descriptor.range_start() as u64,
         );
     }
 
