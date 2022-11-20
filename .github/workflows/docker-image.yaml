@@ -35,7 +35,7 @@ jobs:
           file: ./resources/Dockerfile
           build-args: |
             RUST_TOOLCHAIN=${{ env.toolchain }}
-          platforms: linux/amd64
+          platforms: [linux/arm64, linux/amd64]
           push: ${{ github.repository == 'cloud-hypervisor/rust-hypervisor-firmware' && github.event_name == 'push' }}
           tags: rusthypervisorfirmware/dev:latest
 
