@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2022 Akira Moroo
 
-use fdt::Fdt;
+use fdt::{node::FdtNode, Fdt};
 
 use crate::bootinfo::{EntryType, Info, MemoryEntry};
 
@@ -27,6 +27,15 @@ impl StartInfo<'_> {
             return Some((region.starting_address, region.size?));
         }
         None
+    }
+
+    pub fn with_nodes<F>(&self, path: &str, per_node: F)
+    where
+        F: Fn(&FdtNode),
+    {
+        for node in self.fdt.find_all_nodes(path) {
+            per_node(&node);
+        }
     }
 }
 

@@ -50,6 +50,7 @@ mod integration;
 mod layout;
 mod loader;
 mod mem;
+mod mmio;
 mod part;
 mod pci;
 mod pe;
@@ -178,6 +179,26 @@ pub extern "C" fn rust64_start(x0: *const u8) -> ! {
     if let Some((base, length)) = info.find_compatible_region(&["pci-host-ecam-generic"]) {
         pci::init(base as u64, length as u64);
     }
+
+    info.with_nodes("/virtio_mmio", |node| {
+        const VIRTIO_MMIO_VENDOR_ID: u32 = 0x554d4551;
+        const VIRTIO_MMIO_BLOCK_DEVICE_ID: u32 = 0x2;
+
+        if let Some(region) = node.reg().and_then(|mut reg| reg.next()) {
+            let mut mmio_device = mmio::MmioDevice::new(
+                region.starting_address as u64,
+                region.size.expect("region size expected") as u64,
+            );
+            mmio_device.init();
+            if mmio_device.vendor_id == VIRTIO_MMIO_VENDOR_ID
+                && mmio_device.device_id == VIRTIO_MMIO_BLOCK_DEVICE_ID
+            {
+                let mut mmio_transport = mmio::VirtioMmioTransport::new(mmio_device);
+                let mut device = block::VirtioBlockDevice::new(&mut mmio_transport);
+                boot_from_device(&mut device, &info);
+            }
+        }
+    });
 
     main(&info)
 }
