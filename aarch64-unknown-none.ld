@@ -6,7 +6,7 @@ ENTRY(ram64_start)
     ACPI:   [0x4020_0000-0x403f_ffff)
     kernel: [0x4048_0000-]
    The stack start is at the end of the DRAM region. */
-ram_min = 0x40480000;
+ram_min = 0x40080000;
 
 SECTIONS
 {
