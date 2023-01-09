@@ -39,6 +39,37 @@ impl VariableAllocator {
         }
     }
 
+    pub fn init(&mut self) {
+        let _ = self.set_global_var("SecureBoot", &[0_u8; 1]);
+        let _ = self.set_global_var("SetupMode", &[1_u8; 1]);
+    }
+
+    fn set_global_var(&mut self, name: &str, data: &[u8]) -> efi::Status {
+        const GLOBAL_VARIABLE_GUID: efi::Guid = efi::Guid::from_fields(
+            0x8BE4DF61,
+            0x93CA,
+            0x11d2,
+            0xAA,
+            0x0D,
+            &[0x00, 0xE0, 0x98, 0x03, 0x2B, 0x8C],
+        );
+        const NAME_LENGTH: usize = 64;
+
+        if name.len() > NAME_LENGTH {
+            return efi::Status::INVALID_PARAMETER;
+        }
+
+        let mut var_name = [0_u16; NAME_LENGTH];
+        crate::common::ascii_to_ucs2(name, &mut var_name);
+        self.set(
+            &var_name as *const _,
+            &GLOBAL_VARIABLE_GUID,
+            efi::VARIABLE_BOOTSERVICE_ACCESS | efi::VARIABLE_RUNTIME_ACCESS,
+            data.len(),
+            data as *const _ as *const core::ffi::c_void,
+        )
+    }
+
     fn find(&self, name: *const u16, guid: *const efi::Guid) -> Option<usize> {
         if name.is_null() || guid.is_null() {
             return None;
