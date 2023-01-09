@@ -1111,6 +1111,7 @@ pub fn efi_exec(
     st.configuration_table = &mut ct[0];
 
     populate_allocator(info, loaded_address, loaded_size);
+    VARIABLES.borrow_mut().init();
 
     let efi_part_id = unsafe { block::populate_block_wrappers(&mut BLOCK_WRAPPERS, block) };
 
