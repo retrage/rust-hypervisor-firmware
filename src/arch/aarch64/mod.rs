@@ -3,6 +3,7 @@
 
 #[cfg(not(test))]
 pub mod asm;
+pub mod exception;
 pub mod layout;
 pub mod paging;
 pub mod simd;
