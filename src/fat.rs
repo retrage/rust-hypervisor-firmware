@@ -221,8 +221,17 @@ fn name_to_str(input: &str, output: &mut [u8]) {
     let input = input.trim_matches(pat);
     let len = crate::common::ascii_length(input);
     assert!(len <= output.len());
-    if input == "." || input == ".." || len > 12 {
+    if input == "." || input == ".." || len > 11 {
         output[..len].clone_from_slice(input.as_bytes());
+        return;
+    }
+
+    // Handle "prettybg.big" -> "PRETTYBGBIG" case.
+    if len == 11 && !input.contains(pat) {
+        assert!(output.len() >= 12);
+        output[..8].clone_from_slice(&input.as_bytes()[..8]);
+        output[8] = b'.';
+        output[9..12].clone_from_slice(&input.as_bytes()[8..11]);
         return;
     }
 
