@@ -423,10 +423,15 @@ impl<'a> Directory<'a> {
         }
     }
 
-    pub fn next_node(&mut self) -> Result<(Node, [u8; 11]), Error> {
+    pub fn next_node(&mut self) -> Result<(Node, [u8; 255]), Error> {
         let de = self.next_entry()?;
-        let mut name = [0_u8; 11];
-        name_to_str(core::str::from_utf8(&de.name).unwrap(), &mut name);
+        let long_name = crate::common::ascii_strip(&de.long_name);
+        let mut name = [0_u8; 255];
+        if long_name.len() == 0 {
+            name_to_str(core::str::from_utf8(&de.name).unwrap(), &mut name);
+        } else {
+            name.clone_from_slice(&de.long_name);
+        }
 
         match de.file_type {
             FileType::Directory => Ok((
