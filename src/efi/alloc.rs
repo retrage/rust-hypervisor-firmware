@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use core::fmt;
+
 use r_efi::efi::{self, AllocateType, MemoryType, PhysicalAddress, Status, VirtualAddress};
 
 const PAGE_SIZE: u64 = 4096;
@@ -25,6 +27,19 @@ pub struct MemoryDescriptor {
     pub virtual_start: VirtualAddress,
     pub number_of_pages: u64,
     pub attribute: u64,
+}
+
+impl fmt::Display for MemoryDescriptor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "[{:#016x}-{:#016x}]: type: {:#08x} attribute: {:#016x}",
+            self.physical_start,
+            self.physical_start + self.number_of_pages * PAGE_SIZE,
+            self.r#type,
+            self.attribute
+        )
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -408,6 +423,17 @@ impl Allocator {
             key: 0,
             first_allocation: None,
         }
+    }
+}
+
+impl fmt::Display for Allocator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for allocation in self.allocations {
+            if allocation.in_use {
+                writeln!(f, "{}", allocation.descriptor)?;
+            }
+        }
+        Ok(())
     }
 }
 
