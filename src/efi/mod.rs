@@ -199,11 +199,12 @@ fn convert_internal_pointer(descriptors: &[alloc::MemoryDescriptor], ptr: u64) -
     None
 }
 
-unsafe fn fixup_at_virtual(descriptors: &[alloc::MemoryDescriptor]) {
+unsafe fn fixup_at_virtual(descriptors: &[alloc::MemoryDescriptor]) -> Result<(), ()> {
     let mut st = &mut ST;
     let mut rs = &mut RS;
 
-    let ptr = convert_internal_pointer(descriptors, (not_available as *const ()) as u64).unwrap();
+    let ptr =
+        convert_internal_pointer(descriptors, (not_available as *const ()) as u64).ok_or(())?;
     rs.get_time = transmute(ptr);
     rs.set_time = transmute(ptr);
     rs.get_wakeup_time = transmute(ptr);
@@ -217,12 +218,14 @@ unsafe fn fixup_at_virtual(descriptors: &[alloc::MemoryDescriptor]) {
     rs.query_variable_info = transmute(ptr);
 
     let ct = st.configuration_table;
-    let ptr = convert_internal_pointer(descriptors, (ct as *const _) as u64).unwrap();
+    let ptr = convert_internal_pointer(descriptors, (ct as *const _) as u64).ok_or(())?;
     st.configuration_table = ptr as *mut ConfigurationTable;
 
     let rs = st.runtime_services;
-    let ptr = convert_internal_pointer(descriptors, (rs as *const _) as u64).unwrap();
+    let ptr = convert_internal_pointer(descriptors, (rs as *const _) as u64).ok_or(())?;
     st.runtime_services = ptr as *mut RuntimeServices;
+
+    Ok(())
 }
 
 pub extern "efiapi" fn not_available() -> Status {
@@ -286,8 +289,8 @@ pub extern "efiapi" fn set_virtual_address_map(
         core::slice::from_raw_parts_mut(descriptors as *mut alloc::MemoryDescriptor, count)
     };
 
-    unsafe {
-        fixup_at_virtual(descriptors);
+    if let Err(_) = unsafe { fixup_at_virtual(descriptors) } {
+        return Status::UNSUPPORTED;
     }
 
     ALLOCATOR.borrow_mut().update_virtual_addresses(descriptors)
