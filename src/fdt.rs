@@ -48,18 +48,19 @@ impl Info for StartInfo<'_> {
     }
 
     fn num_entries(&self) -> usize {
-        self.fdt.memory().regions().count()
+        // TODO: Report the number of memory entries using LAYOUT info
+        1
     }
 
     fn entry(&self, idx: usize) -> MemoryEntry {
-        for (i, region) in self.fdt.memory().regions().enumerate() {
-            if i == idx {
-                return MemoryEntry {
-                    addr: region.starting_address as u64,
-                    size: region.size.expect("memory size is required") as u64,
-                    entry_type: EntryType::Ram,
-                };
-            }
+        if idx == 0 {
+            use crate::arch::aarch64::layout::map::dram;
+
+            return MemoryEntry {
+                addr: dram::START as u64,
+                size: (dram::END - dram::START) as u64,
+                entry_type: EntryType::Ram,
+            };
         }
         panic!("No valid memory entry found");
     }
