@@ -599,7 +599,7 @@ pub extern "efiapi" fn locate_handle(
         return Status::SUCCESS;
     }
 
-    Status::UNSUPPORTED
+    Status::NOT_FOUND
 }
 
 pub extern "efiapi" fn locate_device_path(
