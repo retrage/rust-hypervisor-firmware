@@ -37,12 +37,13 @@ pub mod map {
     pub mod dram {
         const FDT_SIZE: usize = 0x0020_0000;
         const ACPI_SIZE: usize = 0x0020_0000;
+        const RESERVED_SIZE: usize = 0x0400_0000;
 
         pub const START: usize = super::mmio::END;
         pub const FDT_START: usize = START;
         pub const ACPI_START: usize = FDT_START + FDT_SIZE;
         pub const KERNEL_START: usize = ACPI_START + ACPI_SIZE;
-        pub const END: usize = super::END;
+        pub const END: usize = super::END - RESERVED_SIZE;
     }
 }
 
