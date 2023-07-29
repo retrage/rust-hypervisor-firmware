@@ -52,6 +52,10 @@ impl From<EntryType> for u32 {
             EntryType::Bad => E820Entry::BAD_TYPE,
             EntryType::VendorReserved => E820Entry::VENDOR_RESERVED_TYPE,
             EntryType::CorebootTable => E820Entry::COREBOOT_TABLE_TYPE,
+            EntryType::BootCode
+            | EntryType::BootData
+            | EntryType::RuntimeCode
+            | EntryType::RuntimeData => E820Entry::RESERVED_TYPE,
         }
     }
 }

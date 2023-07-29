@@ -67,6 +67,8 @@ mod rtc_pl031;
 mod uart_mmio;
 #[cfg(target_arch = "aarch64")]
 mod uart_pl011;
+#[cfg(feature = "universal_payload")]
+mod upl;
 mod virtio;
 
 #[cfg(all(not(test), not(feature = "integration_tests"), feature = "log-panic"))]

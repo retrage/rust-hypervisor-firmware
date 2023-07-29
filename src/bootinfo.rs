@@ -46,4 +46,8 @@ pub enum EntryType {
     Bad,
     VendorReserved,
     CorebootTable,
+    BootCode,
+    BootData,
+    RuntimeCode,
+    RuntimeData,
 }
