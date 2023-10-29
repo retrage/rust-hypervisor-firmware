@@ -23,6 +23,7 @@ log-serial = []
 log-panic = ["log-serial"]
 integration_tests = []
 coreboot = []
+crosvm = []
 efi-var = []
 
 [dependencies]

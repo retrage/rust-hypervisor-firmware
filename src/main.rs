@@ -162,7 +162,10 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn bootinfo::
 
 #[cfg(target_arch = "x86_64")]
 #[no_mangle]
-pub extern "C" fn rust64_start(#[cfg(not(feature = "coreboot"))] pvh_info: &pvh::StartInfo) -> ! {
+pub extern "C" fn rust64_start(
+    #[cfg(all(not(feature = "coreboot"), not(feature = "crosvm")))] pvh_info: &pvh::StartInfo,
+    #[cfg(all(not(feature = "coreboot"), feature = "crosvm"))] boot_info: &boot::Params,
+) -> ! {
     serial::PORT.borrow_mut().init();
 
     arch::x86_64::sse::enable_sse();
@@ -171,8 +174,11 @@ pub extern "C" fn rust64_start(#[cfg(not(feature = "coreboot"))] pvh_info: &pvh:
     #[cfg(feature = "coreboot")]
     let info = &coreboot::StartInfo::default();
 
-    #[cfg(not(feature = "coreboot"))]
+    #[cfg(all(not(feature = "coreboot"), not(feature = "crosvm")))]
     let info = pvh_info;
+
+    #[cfg(all(not(feature = "coreboot"), feature = "crosvm"))]
+    let info = boot_info;
 
     main(info)
 }

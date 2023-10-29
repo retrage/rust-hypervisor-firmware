@@ -5,6 +5,7 @@ use core::mem;
 
 use crate::{
     bootinfo::{EntryType, Info, MemoryEntry},
+    common,
     fat::{Error, Read},
     mem::MemoryRegion,
 };
@@ -114,6 +115,34 @@ pub struct Params {
     _pad8: [u8; 0x30],             // 0xcd0
     eddbuf: [EddInfo; 6],          // 0xd00
     _pad9: [u8; 0x114],            // 0xeec
+}
+
+impl Info for Params {
+    fn name(&self) -> &str {
+        "Linux Boot Protocol"
+    }
+
+    fn cmdline(&self) -> &[u8] {
+        unsafe { common::from_cstring(crate::arch::x86_64::layout::CMDLINE_START) }
+    }
+
+    fn num_entries(&self) -> usize {
+        Params::num_entries(self)
+    }
+
+    fn entry(&self, idx: usize) -> MemoryEntry {
+        Params::entry(&self, idx)
+    }
+
+    fn kernel_load_addr(&self) -> u64 {
+        let kernel_start = crate::arch::x86_64::layout::stack_range().end;
+        log!("kernel_load_addr: {:#x}", kernel_start);
+        kernel_start as u64
+    }
+
+    fn memory_layout(&self) -> &'static [crate::layout::MemoryDescriptor] {
+        &crate::arch::x86_64::layout::MEM_LAYOUT[..]
+    }
 }
 
 impl Default for Params {

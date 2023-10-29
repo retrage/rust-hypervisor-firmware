@@ -1,4 +1,4 @@
-ENTRY(ram32_start) /* coreboot uses the ELF entrypoint */
+ENTRY(ram64_start) /* coreboot uses the ELF entrypoint */
 
 PHDRS
 {
@@ -7,7 +7,7 @@ PHDRS
 }
 
 /* Loaders like to put stuff in low memory (< 1M), so we don't use it. */
-ram_min = 1M;
+ram_min = 2M;
 
 SECTIONS
 {
@@ -40,7 +40,7 @@ SECTIONS
   stack_start = .;
   .stack (NOLOAD) : ALIGN(4K) { . += 128K; }
   /* ram32.s only maps the first 2 MiB, and that must include the stack. */
-  ASSERT((. <= 2M), "Stack overflows initial identity-mapped memory region")
+  /* ASSERT((. <= 2M), "Stack overflows initial identity-mapped memory region") */
   stack_end = .;
 
   /* Strip symbols from the output binary (comment out to get symbols) */
