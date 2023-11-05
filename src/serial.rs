@@ -38,13 +38,39 @@ impl fmt::Write for Serial {
     }
 }
 
-#[macro_export]
-macro_rules! log {
-    ($($arg:tt)*) => {{
-        use core::fmt::Write;
-        #[cfg(all(feature = "log-serial", not(test)))]
-        writeln!($crate::serial::Serial, $($arg)*).unwrap();
-        #[cfg(all(feature = "log-serial", test))]
-        println!($($arg)*);
-    }};
+pub struct Logger;
+
+impl Logger {
+    pub fn init() {
+        log::set_logger(&LOGGER)
+            .map(|()| log::set_max_level(log::LevelFilter::Info))
+            .unwrap();
+    }
 }
+
+impl log::Log for Logger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        if cfg!(not(feature = "log-serial")) {
+            return false;
+        }
+        metadata.level() <= log::Level::Info
+    }
+
+    fn log(&self, record: &log::Record) {
+        use core::fmt::Write;
+        if self.enabled(record.metadata()) {
+            writeln!(
+                Serial,
+                "[{}] {} - {}",
+                record.level(),
+                record.target(),
+                record.args()
+            )
+            .unwrap();
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+pub static LOGGER: Logger = Logger;

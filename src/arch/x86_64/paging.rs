@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2020 Google LLC
 
+use log::info;
 use x86_64::{
     registers::control::Cr3,
     structures::paging::{PageSize, PageTable, PageTableFlags, PhysFrame, Size2MiB},
@@ -23,7 +24,7 @@ pub fn setup() {
     // SAFETY: This function is idempontent and only writes to static memory and
     // CR3. Thus, it is safe to run multiple times or on multiple threads.
     let (l4, l3, l2s) = unsafe { (&mut L4_TABLE, &mut L3_TABLE, &mut L2_TABLES) };
-    log!("Setting up {} GiB identity mapping", ADDRESS_SPACE_GIB);
+    info!("Setting up {} GiB identity mapping", ADDRESS_SPACE_GIB);
     let pt_flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
 
     // Setup Identity map using L2 huge pages
@@ -49,7 +50,7 @@ pub fn setup() {
     if cr3_frame != l4_frame {
         unsafe { Cr3::write(l4_frame, cr3_flags) };
     }
-    log!("Page tables setup");
+    info!("Page tables setup");
 }
 
 // Map a virtual address to a PhysAddr (assumes identity mapping)

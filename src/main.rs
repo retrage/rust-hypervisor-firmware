@@ -18,6 +18,8 @@
 #[cfg(all(not(test), not(feature = "integration_tests")))]
 use core::panic::PanicInfo;
 
+use log::{error, info};
+
 #[cfg(all(
     not(test),
     not(feature = "integration_tests"),
@@ -73,7 +75,7 @@ mod virtio;
 #[cfg(all(not(test), not(feature = "integration_tests"), feature = "log-panic"))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    log!("PANIC: {}", info);
+    error!("PANIC: {}", info);
     loop {
         #[cfg(target_arch = "x86_64")]
         hlt()
@@ -95,10 +97,10 @@ const VIRTIO_PCI_BLOCK_DEVICE_ID: u16 = 0x1042;
 
 fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn bootinfo::Info) -> bool {
     if let Err(err) = device.init() {
-        log!("Error configuring block device: {:?}", err);
+        error!("Error configuring block device: {:?}", err);
         return false;
     }
-    log!(
+    info!(
         "Virtio block device configured. Capacity: {} sectors",
         device.get_capacity()
     );
@@ -106,56 +108,56 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn bootinfo::
     let (start, end) = match part::find_efi_partition(device) {
         Ok(p) => p,
         Err(err) => {
-            log!("Failed to find EFI partition: {:?}", err);
+            error!("Failed to find EFI partition: {:?}", err);
             return false;
         }
     };
-    log!("Found EFI partition");
+    info!("Found EFI partition");
 
     let mut f = fat::Filesystem::new(device, start, end);
     if let Err(err) = f.init() {
-        log!("Failed to create filesystem: {:?}", err);
+        error!("Failed to create filesystem: {:?}", err);
         return false;
     }
-    log!("Filesystem ready");
+    info!("Filesystem ready");
 
     match loader::load_default_entry(&f, info) {
         Ok(mut kernel) => {
-            log!("Jumping to kernel");
+            info!("Jumping to kernel");
             kernel.boot();
             return true;
         }
-        Err(err) => log!("Error loading default entry: {:?}", err),
+        Err(err) => error!("Error loading default entry: {:?}", err),
     }
 
-    log!("Using EFI boot.");
+    info!("Using EFI boot.");
 
     let mut file = match f.open(efi::EFI_BOOT_PATH) {
         Ok(file) => file,
         Err(err) => {
-            log!("Failed to load default EFI binary: {:?}", err);
+            error!("Failed to load default EFI binary: {:?}", err);
             return false;
         }
     };
-    log!("Found bootloader: {}", efi::EFI_BOOT_PATH);
+    info!("Found bootloader: {}", efi::EFI_BOOT_PATH);
 
     let mut l = pe::Loader::new(&mut file);
 
     let (entry_addr, load_addr, size) = match l.load(info.kernel_load_addr()) {
         Ok(load_info) => load_info,
         Err(err) => {
-            log!("Error loading executable: {:?}", err);
+            error!("Error loading executable: {:?}", err);
             return false;
         }
     };
 
     #[cfg(target_arch = "aarch64")]
     if code_range().start < (info.kernel_load_addr() + size) as usize {
-        log!("Error Boot Image is too large");
+        error!("Error Boot Image is too large");
         return false;
     }
 
-    log!("Executable loaded");
+    info!("Executable loaded");
     efi::efi_exec(entry_addr, load_addr, size, info, &f, device);
     true
 }
@@ -164,6 +166,7 @@ fn boot_from_device(device: &mut block::VirtioBlockDevice, info: &dyn bootinfo::
 #[no_mangle]
 pub extern "C" fn rust64_start(#[cfg(not(feature = "coreboot"))] pvh_info: &pvh::StartInfo) -> ! {
     serial::PORT.borrow_mut().init();
+    serial::Logger::init();
 
     arch::x86_64::sse::enable_sse();
     arch::x86_64::paging::setup();
@@ -185,6 +188,7 @@ pub extern "C" fn rust64_start(x0: *const u8) -> ! {
 
     // Use atomic operation before MMU enabled may cause exception, see https://www.ipshop.xyz/5909.html
     serial::PORT.borrow_mut().init();
+    serial::Logger::init();
 
     let info = fdt::StartInfo::new(
         x0,
@@ -207,8 +211,9 @@ pub extern "C" fn rust64_start(a0: u64, a1: *const u8) -> ! {
     use crate::bootinfo::{EntryType, Info, MemoryEntry};
 
     serial::PORT.borrow_mut().init();
+    serial::Logger::init();
 
-    log!("Starting on RV64 0x{:x} 0x{:x}", a0, a1 as u64,);
+    info!("Starting on RV64 0x{:x} 0x{:x}", a0, a1 as u64,);
 
     let info = fdt::StartInfo::new(
         a1,
@@ -224,7 +229,7 @@ pub extern "C" fn rust64_start(a0: u64, a1: *const u8) -> ! {
 
     for i in 0..info.num_entries() {
         let region = info.entry(i);
-        log!(
+        info!(
             "Memory region {}MiB@0x{:x}",
             region.size / 1024 / 1024,
             region.addr
@@ -239,7 +244,7 @@ pub extern "C" fn rust64_start(a0: u64, a1: *const u8) -> ! {
 }
 
 fn main(info: &dyn bootinfo::Info) -> ! {
-    log!("\nBooting with {}", info.name());
+    info!("\nBooting with {}", info.name());
 
     pci::print_bus();
 
