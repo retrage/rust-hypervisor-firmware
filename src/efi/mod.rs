@@ -5,6 +5,7 @@
 use core::alloc as heap_alloc;
 
 use core::{
+    cell::SyncUnsafeCell,
     ffi::c_void,
     mem::{size_of, transmute},
     ptr::null_mut,
@@ -77,7 +78,7 @@ fn heap_alloc_error_handler(layout: heap_alloc::Layout) -> ! {
 pub static VARIABLES: AtomicRefCell<VariableAllocator> =
     AtomicRefCell::new(VariableAllocator::new());
 
-static mut RS: efi::RuntimeServices = efi::RuntimeServices {
+static mut RS: SyncUnsafeCell<efi::RuntimeServices> = SyncUnsafeCell::new(efi::RuntimeServices {
     hdr: efi::TableHeader {
         signature: efi::RUNTIME_SERVICES_SIGNATURE,
         revision: efi::RUNTIME_SERVICES_REVISION,
@@ -99,9 +100,9 @@ static mut RS: efi::RuntimeServices = efi::RuntimeServices {
     update_capsule,
     query_capsule_capabilities,
     query_variable_info,
-};
+});
 
-static mut BS: efi::BootServices = efi::BootServices {
+static mut BS: SyncUnsafeCell<efi::BootServices> = SyncUnsafeCell::new(efi::BootServices {
     hdr: efi::TableHeader {
         signature: efi::BOOT_SERVICES_SIGNATURE,
         revision: efi::BOOT_SERVICES_REVISION,
@@ -153,7 +154,7 @@ static mut BS: efi::BootServices = efi::BootServices {
     set_mem,
     create_event_ex,
     reserved: null_mut(),
-};
+});
 
 const INVALID_GUID: Guid = Guid::from_fields(0, 0, 0, 0, 0, &[0_u8; 6]);
 const MAX_CT_ENTRIES: usize = 8;
@@ -165,7 +166,7 @@ static mut CT: [efi::ConfigurationTable; MAX_CT_ENTRIES] = [efi::ConfigurationTa
 // RHF string in UCS-2
 const FIRMWARE_STRING: [u16; 4] = [0x0052, 0x0048, 0x0046, 0x0000];
 
-static mut ST: efi::SystemTable = efi::SystemTable {
+static mut ST: SyncUnsafeCell<efi::SystemTable> = SyncUnsafeCell::new(efi::SystemTable {
     hdr: efi::TableHeader {
         signature: efi::SYSTEM_TABLE_SIGNATURE,
         revision: (2 << 16) | (80),
@@ -185,7 +186,7 @@ static mut ST: efi::SystemTable = efi::SystemTable {
     boot_services: null_mut(),
     number_of_table_entries: 0,
     configuration_table: null_mut(),
-};
+});
 
 static mut BLOCK_WRAPPERS: block::BlockWrappers = block::BlockWrappers {
     wrappers: [null_mut(); 16],
@@ -204,29 +205,26 @@ fn convert_internal_pointer(descriptors: &[alloc::MemoryDescriptor], ptr: u64) -
 }
 
 unsafe fn fixup_at_virtual(descriptors: &[alloc::MemoryDescriptor]) {
-    let st = &mut ST;
-    let rs = &mut RS;
-
     let ptr = convert_internal_pointer(descriptors, (not_available as *const ()) as u64).unwrap();
-    rs.get_time = transmute(ptr);
-    rs.set_time = transmute(ptr);
-    rs.get_wakeup_time = transmute(ptr);
-    rs.set_wakeup_time = transmute(ptr);
-    rs.get_variable = transmute(ptr);
-    rs.set_variable = transmute(ptr);
-    rs.get_next_variable_name = transmute(ptr);
-    rs.reset_system = transmute(ptr);
-    rs.update_capsule = transmute(ptr);
-    rs.query_capsule_capabilities = transmute(ptr);
-    rs.query_variable_info = transmute(ptr);
+    RS.get_mut().get_time = transmute(ptr);
+    RS.get_mut().set_time = transmute(ptr);
+    RS.get_mut().get_wakeup_time = transmute(ptr);
+    RS.get_mut().set_wakeup_time = transmute(ptr);
+    RS.get_mut().get_variable = transmute(ptr);
+    RS.get_mut().set_variable = transmute(ptr);
+    RS.get_mut().get_next_variable_name = transmute(ptr);
+    RS.get_mut().reset_system = transmute(ptr);
+    RS.get_mut().update_capsule = transmute(ptr);
+    RS.get_mut().query_capsule_capabilities = transmute(ptr);
+    RS.get_mut().query_variable_info = transmute(ptr);
 
-    let ct = st.configuration_table;
+    let ct = ST.get_mut().configuration_table;
     let ptr = convert_internal_pointer(descriptors, (ct as *const _) as u64).unwrap();
-    st.configuration_table = ptr as *mut ConfigurationTable;
+    ST.get_mut().configuration_table = ptr as *mut ConfigurationTable;
 
-    let rs = st.runtime_services;
+    let rs = ST.get_mut().runtime_services;
     let ptr = convert_internal_pointer(descriptors, (rs as *const _) as u64).unwrap();
-    st.runtime_services = ptr as *mut RuntimeServices;
+    ST.get_mut().runtime_services = ptr as *mut RuntimeServices;
 }
 
 pub extern "efiapi" fn not_available() -> Status {
@@ -611,15 +609,14 @@ pub extern "efiapi" fn locate_device_path(
 }
 
 pub extern "efiapi" fn install_configuration_table(guid: *mut Guid, table: *mut c_void) -> Status {
-    let st = unsafe { &mut ST };
-    let ct = unsafe { &mut CT };
-
-    for entry in ct.iter_mut() {
+    for entry in unsafe { CT.iter_mut() } {
         if entry.vendor_guid == unsafe { *guid } {
             if table.is_null() {
                 entry.vendor_guid = INVALID_GUID;
                 entry.vendor_table = null_mut();
-                st.number_of_table_entries -= 1;
+                unsafe {
+                    ST.get_mut().number_of_table_entries -= 1;
+                }
             } else {
                 entry.vendor_table = table;
             }
@@ -632,11 +629,13 @@ pub extern "efiapi" fn install_configuration_table(guid: *mut Guid, table: *mut 
         return Status::NOT_FOUND;
     }
 
-    for entry in ct.iter_mut() {
+    for entry in unsafe { CT.iter_mut() } {
         if entry.vendor_guid == INVALID_GUID && entry.vendor_table.is_null() {
             entry.vendor_guid = unsafe { *guid };
             entry.vendor_table = table;
-            st.number_of_table_entries += 1;
+            unsafe {
+                ST.get_mut().number_of_table_entries += 1;
+            }
             return Status::SUCCESS;
         }
     }
@@ -802,7 +801,7 @@ pub extern "efiapi" fn start_image(
     let ptr = address as *const ();
     let code: extern "efiapi" fn(Handle, *mut efi::SystemTable) -> Status =
         unsafe { core::mem::transmute(ptr) };
-    (code)(image_handle, unsafe { &mut ST })
+    (code)(image_handle, unsafe { ST.get_mut() })
 }
 
 pub extern "efiapi" fn exit(_: Handle, _: Status, _: usize, _: *mut Char16) -> Status {
@@ -1270,7 +1269,7 @@ fn new_image_handle(
         proto: LoadedImageProtocol {
             revision: r_efi::protocols::loaded_image::REVISION,
             parent_handle,
-            system_table: unsafe { &mut ST },
+            system_table: unsafe { ST.get_mut() },
             device_handle,
             file_path,
             load_options_size: 0,
@@ -1352,14 +1351,15 @@ pub fn efi_exec(
 
     let mut stdin = console::STDIN;
     let mut stdout = console::STDOUT;
-    let st = unsafe { &mut ST };
-    st.con_in = &mut stdin;
-    st.con_out = &mut stdout;
-    st.std_err = &mut stdout;
-    st.runtime_services = unsafe { &mut RS };
-    st.boot_services = unsafe { &mut BS };
-    st.number_of_table_entries = 1;
-    st.configuration_table = &mut ct[0];
+    unsafe {
+        ST.get_mut().con_in = &mut stdin;
+        ST.get_mut().con_out = &mut stdout;
+        ST.get_mut().std_err = &mut stdout;
+        ST.get_mut().runtime_services = RS.get_mut();
+        ST.get_mut().boot_services = BS.get_mut();
+        ST.get_mut().number_of_table_entries = 1;
+        ST.get_mut().configuration_table = &mut ct[0];
+    }
 
     populate_allocator(info, loaded_address, loaded_size);
 
@@ -1383,5 +1383,5 @@ pub fn efi_exec(
     let ptr = address as *const ();
     let code: extern "efiapi" fn(Handle, *mut efi::SystemTable) -> Status =
         unsafe { core::mem::transmute(ptr) };
-    (code)((image as *const _) as Handle, &mut *st);
+    (code)((image as *const _) as Handle, unsafe { ST.get_mut() });
 }
