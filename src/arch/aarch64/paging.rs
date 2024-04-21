@@ -2,7 +2,7 @@
 // Copyright (C) 2022 Akira Moroo
 // Copyright (c) 2021-2022 Andre Richter <andre.o.richter@gmail.com>
 
-use core::ops::RangeInclusive;
+use core::{cell::SyncUnsafeCell, ops::RangeInclusive};
 
 use aarch64_cpu::{
     asm::barrier,
@@ -28,7 +28,7 @@ pub mod interface {
 
     /// MMU functions.
     pub trait Mmu {
-        unsafe fn enable_mmu_and_caching(&self) -> Result<(), MmuEnableError>;
+        fn enable_mmu_and_caching(&self) -> Result<(), MmuEnableError>;
 
         fn is_enabled(&self) -> bool;
     }
@@ -204,7 +204,8 @@ pub mod mair {
 /// # Safety
 ///
 /// - Supposed to land in `.bss`. Therefore, ensure that all initial member values boil down to "0".
-static mut KERNEL_TABLES: TranslationTable = TranslationTable::new();
+static mut KERNEL_TABLES: SyncUnsafeCell<TranslationTable> =
+    SyncUnsafeCell::new(TranslationTable::new());
 
 static MMU: MemoryManagementUnit = MemoryManagementUnit;
 
@@ -258,7 +259,7 @@ fn mmu() -> &'static impl interface::Mmu {
 }
 
 impl interface::Mmu for MemoryManagementUnit {
-    unsafe fn enable_mmu_and_caching(&self) -> Result<(), MmuEnableError> {
+    fn enable_mmu_and_caching(&self) -> Result<(), MmuEnableError> {
         if self.is_enabled() {
             return Err(MmuEnableError::AlreadyEnabled);
         }
@@ -273,13 +274,18 @@ impl interface::Mmu for MemoryManagementUnit {
         // Prepare the memory attribute indirection register.
         self.setup_mair();
 
-        // Populate translation tables.
-        KERNEL_TABLES
-            .populate_tt_entries()
-            .map_err(MmuEnableError::Other)?;
+        unsafe {
+            // Populate translation tables.
+            KERNEL_TABLES
+                .get_mut()
+                .populate_tt_entries()
+                .map_err(MmuEnableError::Other)?;
+        }
 
-        // Set the "Translation Table Base Register".
-        TTBR0_EL1.set_baddr(KERNEL_TABLES.phys_base_address());
+        unsafe {
+            // Set the "Translation Table Base Register".
+            TTBR0_EL1.set_baddr(KERNEL_TABLES.get_mut().phys_base_address());
+        }
 
         self.configure_translation_control();
 
@@ -307,9 +313,7 @@ impl interface::Mmu for MemoryManagementUnit {
 }
 
 pub fn setup() {
-    unsafe {
-        if let Err(e) = mmu().enable_mmu_and_caching() {
-            panic!("Failed to setup paging: {:?}", e);
-        }
+    if let Err(e) = mmu().enable_mmu_and_caching() {
+        panic!("Failed to setup paging: {:?}", e);
     }
 }
