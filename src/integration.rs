@@ -613,6 +613,7 @@ mod tests {
 
             const FOCAL_IMAGE_NAME: &str = "focal-server-cloudimg-arm64-raw.img";
             const JAMMY_IMAGE_NAME: &str = "jammy-server-cloudimg-arm64-raw.img";
+            const NOBLE_IMAGE_NAME: &str = "noble-server-cloudimg-arm64-raw.img";
 
             #[test]
             #[cfg(not(feature = "coreboot"))]
@@ -625,6 +626,12 @@ mod tests {
             fn test_boot_ch_jammy() {
                 test_boot(JAMMY_IMAGE_NAME, &UbuntuCloudInit {}, spawn_ch)
             }
+
+            #[test]
+            #[cfg(not(feature = "coreboot"))]
+            fn test_boot_ch_noble() {
+                test_boot(NOBLE_IMAGE_NAME, &UbuntuCloudInit {}, spawn_ch)
+            }
         }
 
         mod x86_64 {
@@ -632,6 +639,7 @@ mod tests {
 
             const FOCAL_IMAGE_NAME: &str = "focal-server-cloudimg-amd64-raw.img";
             const JAMMY_IMAGE_NAME: &str = "jammy-server-cloudimg-amd64-raw.img";
+            const NOBLE_IMAGE_NAME: &str = "noble-server-cloudimg-amd64-raw.img";
             const CLEAR_IMAGE_NAME: &str = "clear-31310-cloudguest.img";
 
             #[test]
@@ -642,6 +650,11 @@ mod tests {
             #[test]
             fn test_boot_qemu_jammy() {
                 test_boot(JAMMY_IMAGE_NAME, &UbuntuCloudInit {}, spawn_qemu)
+            }
+
+            #[test]
+            fn test_boot_qemu_noble() {
+                test_boot(NOBLE_IMAGE_NAME, &UbuntuCloudInit {}, spawn_qemu)
             }
 
             #[test]
@@ -659,6 +672,12 @@ mod tests {
             #[cfg(not(feature = "coreboot"))]
             fn test_boot_ch_jammy() {
                 test_boot(JAMMY_IMAGE_NAME, &UbuntuCloudInit {}, spawn_ch)
+            }
+
+            #[test]
+            #[cfg(not(feature = "coreboot"))]
+            fn test_boot_ch_noble() {
+                test_boot(NOBLE_IMAGE_NAME, &UbuntuCloudInit {}, spawn_ch)
             }
 
             #[test]
