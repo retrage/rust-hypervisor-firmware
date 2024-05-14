@@ -71,6 +71,7 @@ fetch_clear_image() {
 aarch64_fetch_disk_images() {
     fetch_raw_ubuntu_image "focal" "arm64" "current"
     fetch_raw_ubuntu_image "jammy" "arm64" "current"
+    fetch_raw_ubuntu_image "noble" "arm64" "current"
 }
 
 x86_64_fetch_disk_images() {
@@ -78,6 +79,7 @@ x86_64_fetch_disk_images() {
 
     fetch_raw_ubuntu_image "focal" "amd64" "current"
     fetch_raw_ubuntu_image "jammy" "amd64" "current"
+    fetch_raw_ubuntu_image "noble" "amd64" "current"
 }
 
 fetch_disk_images() {
