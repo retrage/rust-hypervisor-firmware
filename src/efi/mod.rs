@@ -35,10 +35,12 @@ mod block;
 mod console;
 mod device_path;
 mod file;
+mod protocol;
 mod var;
 
 use alloc::Allocator;
 use device_path::DevicePath;
+use protocol::ProtocolManager;
 use var::VariableAllocator;
 
 #[cfg(target_arch = "aarch64")]
@@ -66,6 +68,9 @@ pub static ALLOCATOR: AtomicRefCell<Allocator> = AtomicRefCell::new(Allocator::n
 
 pub static VARIABLES: AtomicRefCell<VariableAllocator> =
     AtomicRefCell::new(VariableAllocator::new());
+
+static PROTOCOL_MANAGER: AtomicRefCell<ProtocolManager> =
+    AtomicRefCell::new(ProtocolManager::new());
 
 static mut RS: SyncUnsafeCell<efi::RuntimeServices> = SyncUnsafeCell::new(efi::RuntimeServices {
     hdr: efi::TableHeader {
@@ -517,41 +522,65 @@ const SHIM_LOCK_PROTOCOL_GUID: Guid = Guid::from_fields(
 );
 
 pub extern "efiapi" fn install_protocol_interface(
-    _: *mut Handle,
+    handle: *mut Handle,
     guid: *mut Guid,
-    _: InterfaceType,
-    _: *mut c_void,
+    interface_type: InterfaceType,
+    interface: *mut c_void,
 ) -> Status {
-    if unsafe { *guid } == SHIM_LOCK_PROTOCOL_GUID {
-        Status::SUCCESS
-    } else {
-        Status::UNSUPPORTED
+    match PROTOCOL_MANAGER.borrow_mut().install_protocol_interface(
+        handle,
+        guid,
+        interface_type,
+        interface,
+    ) {
+        Ok(_) => Status::SUCCESS,
+        Err(e) => e.into(),
     }
 }
 
 pub extern "efiapi" fn reinstall_protocol_interface(
-    _: Handle,
-    _: *mut Guid,
-    _: *mut c_void,
-    _: *mut c_void,
+    handle: Handle,
+    guid: *mut Guid,
+    old_interface: *mut c_void,
+    new_interface: *mut c_void,
 ) -> Status {
-    Status::NOT_FOUND
+    match PROTOCOL_MANAGER.borrow_mut().reinstall_protocol_interface(
+        handle,
+        guid,
+        old_interface,
+        new_interface,
+    ) {
+        Ok(_) => Status::SUCCESS,
+        Err(e) => e.into(),
+    }
 }
 
 pub extern "efiapi" fn uninstall_protocol_interface(
-    _: Handle,
-    _: *mut Guid,
-    _: *mut c_void,
+    handle: Handle,
+    guid: *mut Guid,
+    interface: *mut c_void,
 ) -> Status {
-    Status::NOT_FOUND
+    match PROTOCOL_MANAGER
+        .borrow_mut()
+        .uninstall_protocol_interface(handle, guid, interface)
+    {
+        Ok(_) => Status::SUCCESS,
+        Err(e) => e.into(),
+    }
 }
 
 pub extern "efiapi" fn handle_protocol(
     handle: Handle,
     guid: *mut Guid,
-    out: *mut *mut c_void,
+    interface: *mut *mut c_void,
 ) -> Status {
-    open_protocol(handle, guid, out, null_mut(), null_mut(), 0)
+    match PROTOCOL_MANAGER
+        .borrow_mut()
+        .handle_protocol(handle, guid, interface)
+    {
+        Ok(_) => Status::SUCCESS,
+        Err(e) => e.into(),
+    }
 }
 
 pub extern "efiapi" fn register_protocol_notify(
