@@ -3,10 +3,12 @@
 
 use core::ffi::c_void;
 
-use r_efi::{
-    efi::{self, Guid, Status},
-    eficall, eficall_abi,
-    protocols::device_path::Protocol as DevicePathProtocol,
+use r_efi::efi::{
+    protocols::{
+        block_io::{Media, Protocol as BlockIoProtocol, PROTOCOL_GUID as BLOCKIO_PROTOCOL_GUID},
+        device_path::{HardDriveMedia, Protocol as DevicePathProtocol},
+    },
+    Boolean, Status,
 };
 
 use crate::{
@@ -14,26 +16,7 @@ use crate::{
     part::{get_partitions, PartitionEntry},
 };
 
-pub const PROTOCOL_GUID: Guid = Guid::from_fields(
-    0x964e_5b21,
-    0x6459,
-    0x11d2,
-    0x8e,
-    0x39,
-    &[0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b],
-);
-
-#[allow(dead_code)]
-#[repr(packed)]
-pub struct HardDiskDevicePathProtocol {
-    pub device_path: DevicePathProtocol,
-    pub partition_number: u32,
-    pub partition_start: u64,
-    pub partition_size: u64,
-    pub partition_signature: [u8; 16],
-    pub partition_format: u8,
-    pub signature_type: u8,
-}
+use super::{install_protocol_wrapper, protocol};
 
 #[allow(dead_code)]
 #[repr(packed)]
@@ -43,64 +26,19 @@ pub struct ControllerDevicePathProtocol {
 }
 
 #[repr(C)]
-struct BlockIoMedia {
-    media_id: u32,
-    removable_media: bool,
-    media_present: bool,
-    logical_partition: bool,
-    read_only: bool,
-    write_caching: bool,
-    block_size: u32,
-    io_align: u32,
-    last_block: u64,
-}
-
-#[repr(C)]
-pub struct BlockIoProtocol {
-    revision: u64,
-    media: *const BlockIoMedia,
-    reset: eficall! {fn(
-        *mut BlockIoProtocol,
-        bool
-    ) -> Status},
-    read_blocks: eficall! {fn(
-        *mut BlockIoProtocol,
-        u32,
-        u64,
-        usize,
-        *mut c_void
-    ) -> Status},
-    write_blocks: eficall! {fn(
-        *mut BlockIoProtocol,
-        u32,
-        u64,
-        usize,
-        *mut c_void
-    ) -> Status},
-    flush_blocks: eficall! {fn(
-        *mut BlockIoProtocol,
-    ) -> Status},
-}
-
-#[repr(C)]
 pub struct BlockWrapper<'a> {
     hw: super::HandleWrapper,
     block: &'a VirtioBlockDevice<'a>,
-    media: BlockIoMedia,
+    media: Media,
     pub proto: BlockIoProtocol,
     // The ordering of these paths are very important, along with the C
     // representation as the device path "flows" from the first.
     pub controller_path: ControllerDevicePathProtocol,
-    pub disk_paths: [HardDiskDevicePathProtocol; 2],
+    pub disk_paths: [HardDriveMedia; 2],
     start_lba: u64,
 }
 
-pub struct BlockWrappers<'a> {
-    pub wrappers: [*mut BlockWrapper<'a>; 16],
-    pub count: usize,
-}
-
-pub extern "efiapi" fn reset(_: *mut BlockIoProtocol, _: bool) -> Status {
+pub extern "efiapi" fn reset(_: *mut BlockIoProtocol, _: Boolean) -> Status {
     Status::UNSUPPORTED
 }
 
@@ -180,150 +118,141 @@ impl<'a> BlockWrapper<'a> {
         start_lba: u64,
         last_lba: u64,
         uuid: [u8; 16],
-    ) -> *mut BlockWrapper {
+    ) -> BlockWrapper<'a> {
         let last_block = (*block).get_capacity() - 1;
 
-        let size = core::mem::size_of::<BlockWrapper>();
-        let (_status, new_address) = super::ALLOCATOR.borrow_mut().allocate_pages(
-            efi::ALLOCATE_ANY_PAGES,
-            efi::LOADER_DATA,
-            ((size + super::PAGE_SIZE as usize - 1) / super::PAGE_SIZE as usize) as u64,
-            0_u64,
-        );
-
-        let bw = new_address as *mut BlockWrapper;
-
-        unsafe {
-            *bw = BlockWrapper {
-                hw: super::HandleWrapper {
-                    handle_type: super::HandleType::Block,
+        let mut bw = BlockWrapper {
+            hw: super::HandleWrapper {
+                handle_type: super::HandleType::Block,
+            },
+            block,
+            media: Media {
+                media_id: 0,
+                removable_media: false,
+                media_present: true,
+                logical_partition: false,
+                read_only: true,
+                write_caching: false,
+                block_size: SectorBuf::len() as u32,
+                io_align: 0,
+                last_block,
+                lowest_aligned_lba: 0,
+                logical_blocks_per_physical_block: 1,
+                optimal_transfer_length_granularity: 1,
+            },
+            proto: BlockIoProtocol {
+                revision: 0x0001_0000, // EFI_BLOCK_IO_PROTOCOL_REVISION
+                media: core::ptr::null(),
+                reset,
+                read_blocks,
+                write_blocks,
+                flush_blocks,
+            },
+            start_lba,
+            controller_path: ControllerDevicePathProtocol {
+                device_path: DevicePathProtocol {
+                    r#type: 1,
+                    sub_type: 5,
+                    length: [8, 0],
                 },
-                block,
-                media: BlockIoMedia {
-                    media_id: 0,
-                    removable_media: false,
-                    media_present: true,
-                    logical_partition: false,
-                    read_only: true,
-                    write_caching: false,
-                    block_size: SectorBuf::len() as u32,
-                    io_align: 0,
-                    last_block,
-                },
-                proto: BlockIoProtocol {
-                    revision: 0x0001_0000, // EFI_BLOCK_IO_PROTOCOL_REVISION
-                    media: core::ptr::null(),
-                    reset,
-                    read_blocks,
-                    write_blocks,
-                    flush_blocks,
-                },
-                start_lba,
-                controller_path: ControllerDevicePathProtocol {
-                    device_path: DevicePathProtocol {
-                        r#type: 1,
-                        sub_type: 5,
-                        length: [8, 0],
+                controller: 0,
+            },
+            // full disk vs partition
+            disk_paths: if partition_number == 0 {
+                [
+                    HardDriveMedia {
+                        header: DevicePathProtocol {
+                            r#type: r_efi::protocols::device_path::TYPE_END,
+                            sub_type: 0xff, // End of full path
+                            length: [4, 0],
+                        },
+                        partition_number: 0,
+                        partition_format: 0x0,
+                        partition_start: 0,
+                        partition_size: 0,
+                        partition_signature: [0; 16],
+                        signature_type: 0,
                     },
-                    controller: 0,
-                },
-                // full disk vs partition
-                disk_paths: if partition_number == 0 {
-                    [
-                        HardDiskDevicePathProtocol {
-                            device_path: DevicePathProtocol {
-                                r#type: r_efi::protocols::device_path::TYPE_END,
-                                sub_type: 0xff, // End of full path
-                                length: [4, 0],
-                            },
-                            partition_number: 0,
-                            partition_format: 0x0,
-                            partition_start: 0,
-                            partition_size: 0,
-                            partition_signature: [0; 16],
-                            signature_type: 0,
+                    HardDriveMedia {
+                        header: DevicePathProtocol {
+                            r#type: r_efi::protocols::device_path::TYPE_END,
+                            sub_type: 0xff, // End of full path
+                            length: [4, 0],
                         },
-                        HardDiskDevicePathProtocol {
-                            device_path: DevicePathProtocol {
-                                r#type: r_efi::protocols::device_path::TYPE_END,
-                                sub_type: 0xff, // End of full path
-                                length: [4, 0],
-                            },
-                            partition_number: 0,
-                            partition_format: 0x0,
-                            partition_start: 0,
-                            partition_size: 0,
-                            partition_signature: [0; 16],
-                            signature_type: 0,
+                        partition_number: 0,
+                        partition_format: 0x0,
+                        partition_start: 0,
+                        partition_size: 0,
+                        partition_signature: [0; 16],
+                        signature_type: 0,
+                    },
+                ]
+            } else {
+                [
+                    HardDriveMedia {
+                        header: DevicePathProtocol {
+                            r#type: r_efi::protocols::device_path::TYPE_MEDIA,
+                            sub_type: 1,
+                            length: [42, 0],
                         },
-                    ]
-                } else {
-                    [
-                        HardDiskDevicePathProtocol {
-                            device_path: DevicePathProtocol {
-                                r#type: r_efi::protocols::device_path::TYPE_MEDIA,
-                                sub_type: 1,
-                                length: [42, 0],
-                            },
-                            partition_number,
-                            partition_format: 0x02, // GPT
-                            partition_start: start_lba,
-                            partition_size: last_lba - start_lba + 1,
-                            partition_signature: uuid,
-                            signature_type: 0x02,
+                        partition_number,
+                        partition_format: 0x02, // GPT
+                        partition_start: start_lba,
+                        partition_size: last_lba - start_lba + 1,
+                        partition_signature: uuid,
+                        signature_type: 0x02,
+                    },
+                    HardDriveMedia {
+                        header: DevicePathProtocol {
+                            r#type: r_efi::protocols::device_path::TYPE_END,
+                            sub_type: 0xff, // End of full path
+                            length: [4, 0],
                         },
-                        HardDiskDevicePathProtocol {
-                            device_path: DevicePathProtocol {
-                                r#type: r_efi::protocols::device_path::TYPE_END,
-                                sub_type: 0xff, // End of full path
-                                length: [4, 0],
-                            },
-                            partition_number: 0,
-                            partition_format: 0x0,
-                            partition_start: 0,
-                            partition_size: 0,
-                            partition_signature: [0; 16],
-                            signature_type: 0,
-                        },
-                    ]
-                },
-            };
-
-            (*bw).proto.media = &(*bw).media;
-        }
+                        partition_number: 0,
+                        partition_format: 0x0,
+                        partition_start: 0,
+                        partition_size: 0,
+                        partition_signature: [0; 16],
+                        signature_type: 0,
+                    },
+                ]
+            },
+        };
+        bw.proto.media = &bw.media;
         bw
     }
 }
 
-pub fn populate_block_wrappers(
-    wrappers: &mut BlockWrappers,
-    block: *const VirtioBlockDevice,
-) -> Option<u32> {
+pub fn populate_block_wrappers<'a>(
+    block: &'a VirtioBlockDevice<'a>,
+) -> Result<Option<u32>, protocol::Error> {
     let mut parts = [PartitionEntry::default(); 16];
 
-    wrappers.wrappers[0] = BlockWrapper::new(
-        unsafe { &*block.cast::<crate::block::VirtioBlockDevice<'_>>() },
-        0,
-        0,
-        0,
-        [0; 16],
-    );
+    // install_protocol_wrapper(
+    //     &BLOCKIO_PROTOCOL_GUID,
+    //     BlockWrapper::new(block, 0, 0, 0, [0; 16]),
+    // )?;
 
     let mut efi_part_id = None;
-    let part_count = get_partitions(unsafe { &*block }, &mut parts).unwrap();
+    let part_count = get_partitions(block, &mut parts).unwrap();
     for i in 0..part_count {
         let p = parts[i as usize];
-        wrappers.wrappers[i as usize + 1] = BlockWrapper::new(
-            unsafe { &*block.cast::<crate::block::VirtioBlockDevice<'_>>() },
-            i + 1,
-            p.first_lba,
-            p.last_lba,
-            p.guid,
-        );
-        if p.is_efi_partition() {
-            efi_part_id = Some(i + 1);
+        match install_protocol_wrapper(
+            &BLOCKIO_PROTOCOL_GUID,
+            BlockWrapper::new(block, i + 1, p.first_lba, p.last_lba, p.guid),
+        ) {
+            Ok(_) => {
+                log!("Installed block wrapper for partition {}", i + 1);
+                if p.is_efi_partition() {
+                    efi_part_id = Some(i + 1);
+                }
+            }
+            Err(e) => {
+                log!("Failed to install block wrapper: {:?}", e);
+                return Err(e);
+            }
         }
     }
-    wrappers.count = part_count as usize + 1;
-    efi_part_id
+
+    Ok(efi_part_id)
 }

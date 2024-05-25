@@ -2,7 +2,9 @@
 // Copyright © 2019 Intel Corporation
 
 #![feature(asm_const)]
+#![feature(c_variadic)]
 #![feature(exposed_provenance)]
+#![feature(extended_varargs_abi_support)]
 #![feature(slice_take)]
 #![feature(stmt_expr_attributes)]
 #![feature(strict_provenance)]
@@ -106,8 +108,8 @@ enum Error {
     ImageTooLarge,
 }
 
-fn boot_from_device(
-    device: &mut block::VirtioBlockDevice,
+fn boot_from_device<'a>(
+    device: &'a mut block::VirtioBlockDevice<'a>,
     info: &dyn bootinfo::Info,
 ) -> Result<(), Error> {
     if let Err(err) = device.init() {
