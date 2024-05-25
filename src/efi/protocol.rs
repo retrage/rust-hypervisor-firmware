@@ -11,11 +11,12 @@ use core::{
     ptr::{null_mut, NonNull},
 };
 
-use heapless::{FnvIndexMap, Vec};
+use heapless::{FnvIndexMap, FnvIndexSet, Vec};
 use r_efi::efi::{self};
 
 use super::allocate_pool;
 
+#[derive(Debug)]
 pub enum Error {
     OutOfResources,
     NotFound,
@@ -76,26 +77,26 @@ impl WrappedHandle {
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 struct Protocol {
     guid: efi::Guid,
-    interface: *mut c_void,
+    interface: NonNull<c_void>,
 }
 
 impl Default for Protocol {
     fn default() -> Self {
         Self {
             guid: efi::Guid::from_bytes(&[0u8; 16]),
-            interface: core::ptr::null_mut(),
+            interface: NonNull::dangling(),
         }
     }
 }
 
 impl Protocol {
-    pub fn new(guid: efi::Guid, interface: *mut c_void) -> Self {
+    pub fn new(guid: efi::Guid, interface: NonNull<c_void>) -> Self {
         Self { guid, interface }
     }
 
-    fn is_empty(&self) -> bool {
-        self.guid == efi::Guid::from_bytes(&[0u8; 16]) && self.interface.is_null()
-    }
+    // fn is_empty(&self) -> bool {
+    //     self.guid == efi::Guid::from_bytes(&[0u8; 16]) && self.interface.is_null()
+    // }
 }
 
 struct OpenProtocolData {
@@ -128,16 +129,19 @@ type DeviceHandle = WrappedHandle;
 type ImageHandle = WrappedHandle;
 
 pub struct ProtocolManager {
+    handles: FnvIndexSet<WrappedHandle, MAX_HANDLES>,
     protocols: FnvIndexMap<DeviceHandle, Vec<Protocol, MAX_PROTOCOLS>, MAX_DEVICE_HANDLES>,
     open_lists: FnvIndexMap<Protocol, Vec<OpenProtocolData, MAX_OPEN_DATA>, MAX_PROTOCOLS>,
 }
 
+// TODO: Make ProtocolManager thread-safe
 unsafe impl Send for ProtocolManager {}
 unsafe impl Sync for ProtocolManager {}
 
 impl ProtocolManager {
     pub const fn new() -> Self {
         Self {
+            handles: FnvIndexSet::new(),
             protocols: FnvIndexMap::new(),
             open_lists: FnvIndexMap::new(),
         }
@@ -152,6 +156,7 @@ impl ProtocolManager {
     ) -> Result<(), Error> {
         // TODO: Allow handle to be null
         if handle.is_null() || protocol_guid.is_null() || interface_type != efi::NATIVE_INTERFACE {
+            log!("handle: {:p}, protocol_guid: {:p}, interface_type: {:?}, interface: {:p}", handle, protocol_guid, interface_type, interface);
             return Err(Error::InvalidParameter);
         }
         let handle = WrappedHandle::new(unsafe { *handle });
@@ -163,10 +168,12 @@ impl ProtocolManager {
                 }
                 for protocol in protocols.iter() {
                     if protocol.guid == protocol_guid {
-                        return Err(Error::InvalidParameter);
+                        log!("Protocol already installed");
+                        // return Err(Error::InvalidParameter);
+                        continue;
                     }
                 }
-                let protocol = Protocol::new(protocol_guid, interface);
+                let protocol = Protocol::new(protocol_guid, NonNull::new(interface).unwrap());
                 protocols
                     .push(protocol)
                     .map_err(|_| Error::OutOfResources)?;
@@ -174,7 +181,7 @@ impl ProtocolManager {
             }
             None => {
                 let mut protocols = Vec::new();
-                let protocol = Protocol::new(protocol_guid, interface);
+                let protocol = Protocol::new(protocol_guid, NonNull::new(interface).unwrap());
                 protocols
                     .push(protocol)
                     .map_err(|_| Error::OutOfResources)?;
@@ -200,7 +207,7 @@ impl ProtocolManager {
         match self.protocols.get_mut(&handle) {
             Some(protocols) => {
                 for (idx, protocol) in protocols.iter_mut().enumerate() {
-                    if protocol.guid == protocol_guid && protocol.interface == interface {
+                    if protocol.guid == protocol_guid && protocol.interface.as_ptr() == interface {
                         // TODO: Check if the protocol is opened
                         protocols.remove(idx);
                         return Ok(());
@@ -227,8 +234,10 @@ impl ProtocolManager {
         match self.protocols.get_mut(&handle) {
             Some(protocols) => {
                 for protocol in protocols.iter_mut() {
-                    if protocol.guid == protocol_guid && protocol.interface == old_interface {
-                        protocol.interface = new_interface;
+                    if protocol.guid == protocol_guid
+                        && protocol.interface.as_ptr() == old_interface
+                    {
+                        protocol.interface = NonNull::new(new_interface).unwrap();
                         return Ok(());
                     }
                 }
@@ -240,11 +249,12 @@ impl ProtocolManager {
 
     pub fn register_protocol_notify(
         &mut self,
-        _protocol: &efi::Guid,
+        _protocol: *mut efi::Guid,
         _event: efi::Event,
         _registration: *mut efi::Handle,
     ) -> Result<(), Error> {
-        todo!()
+        log!("register_protocol_notify");
+        Err(Error::Unsupported)
     }
 
     pub fn locate_handle(
@@ -308,6 +318,7 @@ impl ProtocolManager {
         protocol_guid: *const efi::Guid,
         interface: *mut *mut c_void,
     ) -> Result<(), Error> {
+        log!("handle_protocol");
         self.open_protocol(
             handle,
             protocol_guid,
@@ -320,11 +331,11 @@ impl ProtocolManager {
 
     pub fn locate_device_path(
         &mut self,
-        _protocol: &efi::Guid,
-        _device_path: &mut efi::protocols::device_path::Protocol,
-        _device: &mut efi::Handle,
+        _protocol: *mut efi::Guid,
+        _device_path: *mut *mut efi::protocols::device_path::Protocol,
+        _device: *mut efi::Handle,
     ) -> Result<(), Error> {
-        todo!()
+        Err(Error::NotFound)
     }
 
     // It does not support the following attributes:
@@ -362,7 +373,7 @@ impl ProtocolManager {
                     if open_data.matches(agent_handle, controller_handle, Some(attributes)) {
                         open_data.open_count += 1;
                         if attributes != efi::OPEN_PROTOCOL_TEST_PROTOCOL {
-                            unsafe { *interface = prot.interface };
+                            unsafe { *interface = prot.interface.as_ptr() };
                         }
                         return Ok(());
                     }
@@ -373,13 +384,14 @@ impl ProtocolManager {
                 if attributes != efi::OPEN_PROTOCOL_TEST_PROTOCOL {
                     unsafe { *interface = null_mut() };
                 }
+                log!("open_list is None");
                 return Err(Error::Unsupported);
             }
         };
 
         if agent_handle.is_null() {
             if attributes != efi::OPEN_PROTOCOL_TEST_PROTOCOL {
-                unsafe { *interface = prot.interface };
+                unsafe { *interface = prot.interface.as_ptr() };
             }
             return Ok(());
         }
@@ -394,22 +406,22 @@ impl ProtocolManager {
             .map_err(|_| Error::OutOfResources)?;
 
         if attributes != efi::OPEN_PROTOCOL_TEST_PROTOCOL {
-            unsafe { *interface = prot.interface };
+            unsafe { *interface = prot.interface.as_ptr() };
         }
         Ok(())
     }
 
     pub fn close_protocol(
         &mut self,
-        user_handle: *const efi::Handle,
-        protocol: *const efi::Guid,
+        user_handle: efi::Handle,
+        protocol: *mut efi::Guid,
         agent_handle: efi::Handle,
         controller_handle: efi::Handle,
     ) -> Result<(), Error> {
         if user_handle.is_null() || agent_handle.is_null() || protocol.is_null() {
             return Err(Error::InvalidParameter);
         }
-        let user_handle = WrappedHandle::new(unsafe { *user_handle });
+        let user_handle = WrappedHandle::new(user_handle);
         let prot = self
             .protocols
             .get(&user_handle)
@@ -431,7 +443,7 @@ impl ProtocolManager {
 
     pub fn open_protocol_information(
         &mut self,
-        handle: *const efi::Handle,
+        handle: efi::Handle,
         protocol_guid: *const efi::Guid,
         entry_buffer: *mut *mut efi::OpenProtocolInformationEntry,
         entry_count: *mut usize,
@@ -443,7 +455,6 @@ impl ProtocolManager {
         {
             return Err(Error::InvalidParameter);
         }
-        let _handle = unsafe { *handle };
         let _protocol_guid = unsafe { *protocol_guid };
         todo!()
     }
@@ -453,9 +464,10 @@ impl ProtocolManager {
         _controller_handle: efi::Handle,
         _driver_image_handle: *const efi::Handle,
         _remaining_device_path: *const efi::protocols::device_path::Protocol,
-        _recursive: bool,
+        _recursive: efi::Boolean,
     ) -> Result<(), Error> {
-        todo!()
+        log!("connect_controller");
+        Err(Error::Unsupported)
     }
 
     pub fn disconnect_controller(
@@ -464,13 +476,14 @@ impl ProtocolManager {
         _driver_image_handle: efi::Handle,
         _child_handle: efi::Handle,
     ) -> Result<(), Error> {
-        todo!()
+        log!("disconnect_controller");
+        Err(Error::Unsupported)
     }
 
     pub fn protocols_per_handle(
         &mut self,
         handle: efi::Handle,
-        protocol_buffer: *const *mut *mut efi::Guid,
+        protocol_buffer: *mut *mut *mut efi::Guid,
         protocol_buffer_count: *mut usize,
     ) -> Result<(), Error> {
         if handle.is_null() || protocol_buffer.is_null() || protocol_buffer_count.is_null() {
@@ -507,7 +520,8 @@ impl ProtocolManager {
         _no_handles: *mut usize,
         _buffer: *mut *mut efi::Handle,
     ) -> Result<(), Error> {
-        todo!()
+        log!("locate_handle_buffer");
+        Err(Error::Unsupported)
     }
 
     pub fn locate_protocol(
@@ -524,7 +538,7 @@ impl ProtocolManager {
         for protocols in self.protocols.values() {
             for protocol in protocols.iter() {
                 if protocol.guid == protocol_guid {
-                    unsafe { *interface = protocol.interface };
+                    unsafe { *interface = protocol.interface.as_ptr() };
                     return Ok(());
                 }
             }
