@@ -9,18 +9,6 @@ use r_efi::{
     },
 };
 
-use super::{HandleType, HandleWrapper};
-
-pub const STDIN_HANDLE: Handle = &HandleWrapper {
-    handle_type: HandleType::None,
-} as *const _ as Handle;
-pub const STDOUT_HANDLE: Handle = &HandleWrapper {
-    handle_type: HandleType::None,
-} as *const _ as Handle;
-pub const STDERR_HANDLE: Handle = &HandleWrapper {
-    handle_type: HandleType::None,
-} as *const _ as Handle;
-
 pub extern "efiapi" fn stdin_reset(_: *mut SimpleTextInputProtocol, _: Boolean) -> Status {
     Status::UNSUPPORTED
 }
@@ -147,3 +135,11 @@ pub const STDOUT: SimpleTextOutputProtocol = SimpleTextOutputProtocol {
     enable_cursor: stdout_enable_cursor,
     mode: &STDOUT_OUTPUT_MODE as *const SimpleTextOutputMode as *mut SimpleTextOutputMode,
 };
+
+pub fn populate_stdin_wrapper() -> Result<Handle, super::protocol::Error> {
+    super::install_protocol_wrapper(&r_efi::protocols::simple_text_input::PROTOCOL_GUID, STDIN)
+}
+
+pub fn populate_stdout_wrapper() -> Result<Handle, super::protocol::Error> {
+    super::install_protocol_wrapper(&r_efi::protocols::simple_text_output::PROTOCOL_GUID, STDOUT)
+}
