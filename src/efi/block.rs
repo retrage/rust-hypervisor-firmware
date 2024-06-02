@@ -25,7 +25,6 @@ pub struct ControllerDevicePathProtocol {
 
 #[repr(C)]
 pub struct BlockWrapper<'a> {
-    hw: super::HandleWrapper,
     block: &'a VirtioBlockDevice<'a>,
     media: Media,
     pub proto: BlockIoProtocol,
@@ -120,9 +119,6 @@ impl<'a> BlockWrapper<'a> {
         let last_block = (*block).get_capacity() - 1;
 
         let mut bw = BlockWrapper {
-            hw: super::HandleWrapper {
-                handle_type: super::HandleType::Block,
-            },
             block,
             media: Media {
                 media_id: 0,

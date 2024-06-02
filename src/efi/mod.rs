@@ -36,20 +36,6 @@ pub const EFI_BOOT_PATH: &str = "\\EFI\\BOOT\\BOOTX64.EFI";
 #[cfg(target_arch = "riscv64")]
 pub const EFI_BOOT_PATH: &str = "\\EFI\\BOOT\\BOOTRISCV64.EFI";
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-enum HandleType {
-    None,
-    Block,
-    FileSystem,
-    LoadedImage,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-struct HandleWrapper {
-    handle_type: HandleType,
-}
-
 pub static ALLOCATOR: AtomicRefCell<Allocator> =
     AtomicRefCell::new(Allocator::new(layout::MemoryDescriptor::PAGE_SIZE as u64));
 
@@ -72,11 +58,11 @@ static mut ST: SyncUnsafeCell<efi::SystemTable> = SyncUnsafeCell::new(efi::Syste
     },
     firmware_vendor: FIRMWARE_STRING.as_ptr() as *mut u16,
     firmware_revision: 0,
-    console_in_handle: console::STDIN_HANDLE,
+    console_in_handle: null_mut(),
     con_in: null_mut(),
-    console_out_handle: console::STDOUT_HANDLE,
+    console_out_handle: null_mut(),
     con_out: null_mut(),
-    standard_error_handle: console::STDERR_HANDLE,
+    standard_error_handle: null_mut(),
     std_err: null_mut(),
     runtime_services: null_mut(),
     boot_services: null_mut(),
@@ -139,7 +125,6 @@ fn populate_allocator(info: &dyn bootinfo::Info, image_address: u64, image_size:
 
 #[repr(C)]
 struct LoadedImageWrapper {
-    hw: HandleWrapper,
     proto: LoadedImageProtocol,
     entry_point: u64,
 }
@@ -154,9 +139,6 @@ impl LoadedImageWrapper {
         entry_addr: u64,
     ) -> LoadedImageWrapper {
         LoadedImageWrapper {
-            hw: HandleWrapper {
-                handle_type: HandleType::LoadedImage,
-            },
             proto: LoadedImageProtocol {
                 revision: r_efi::protocols::loaded_image::REVISION,
                 parent_handle,
@@ -284,22 +266,28 @@ pub fn efi_exec<'a>(
         }
     };
 
+    populate_allocator(info, loaded_address, loaded_size);
+
+    let efi_part_id = block::populate_block_wrappers(block).unwrap();
+
+    let fs_handle = file::populate_fs_wrapper(fs, efi_part_id).unwrap();
+
+    let stdin_handle = console::populate_stdin_wrapper().unwrap();
+    let stdout_handle = console::populate_stdout_wrapper().unwrap();
+
     let mut stdin = console::STDIN;
     let mut stdout = console::STDOUT;
     let st = unsafe { ST.get_mut() };
+    st.console_in_handle = stdin_handle;
     st.con_in = &mut stdin;
+    st.console_out_handle = stdout_handle;
     st.con_out = &mut stdout;
+    st.standard_error_handle = stdout_handle;
     st.std_err = &mut stdout;
     st.runtime_services = unsafe { RS.get_mut() };
     st.boot_services = unsafe { BS.get_mut() };
     st.number_of_table_entries = 1;
     st.configuration_table = &mut ct[0];
-
-    populate_allocator(info, loaded_address, loaded_size);
-
-    let efi_part_id = block::populate_block_wrappers(block).unwrap();
-
-    let wrapped_fs = file::FileSystemWrapper::new(fs, efi_part_id);
 
     let mut path = [0u8; 256];
     path[0..crate::efi::EFI_BOOT_PATH.as_bytes().len()]
@@ -308,7 +296,7 @@ pub fn efi_exec<'a>(
     let image = new_image_handle(
         device_path.generate(),
         0 as Handle,
-        &wrapped_fs as *const _ as Handle,
+        fs_handle,
         loaded_address,
         loaded_size,
         address,
