@@ -108,8 +108,8 @@ enum Error {
     ImageTooLarge,
 }
 
-fn boot_from_device(
-    device: &mut block::VirtioBlockDevice,
+fn boot_from_device<'a>(
+    device: &'a mut block::VirtioBlockDevice<'a>,
     info: &dyn bootinfo::Info,
 ) -> Result<(), Error> {
     if let Err(err) = device.init() {
