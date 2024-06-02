@@ -6,7 +6,7 @@ use core::{cell::SyncUnsafeCell, ffi::c_void, mem::size_of, ptr::null_mut};
 use atomic_refcell::AtomicRefCell;
 use r_efi::{
     efi::{self, Guid, Handle, Status},
-    protocols::loaded_image::Protocol as LoadedImageProtocol,
+    protocols::loaded_image::{self, Protocol as LoadedImageProtocol},
 };
 
 use crate::{bootinfo, layout};
@@ -18,12 +18,14 @@ mod console;
 mod device_path;
 mod file;
 mod mem_file;
+mod protocol;
 mod runtime_services;
 mod var;
 
 use alloc::Allocator;
 use boot_services::{BS, CT};
 use device_path::DevicePath;
+use protocol::ProtocolManager;
 use runtime_services::RS;
 use var::VariableAllocator;
 
@@ -50,6 +52,9 @@ struct HandleWrapper {
 
 pub static ALLOCATOR: AtomicRefCell<Allocator> =
     AtomicRefCell::new(Allocator::new(layout::MemoryDescriptor::PAGE_SIZE as u64));
+
+static PROTOCOL_MANAGER: AtomicRefCell<ProtocolManager> =
+    AtomicRefCell::new(ProtocolManager::new());
 
 pub static VARIABLES: AtomicRefCell<VariableAllocator> =
     AtomicRefCell::new(VariableAllocator::new());
@@ -78,12 +83,6 @@ static mut ST: SyncUnsafeCell<efi::SystemTable> = SyncUnsafeCell::new(efi::Syste
     number_of_table_entries: 0,
     configuration_table: null_mut(),
 });
-
-static mut BLOCK_WRAPPERS: SyncUnsafeCell<block::BlockWrappers> =
-    SyncUnsafeCell::new(block::BlockWrappers {
-        wrappers: [null_mut(); 16],
-        count: 0,
-    });
 
 // Populate allocator from E820, fixed ranges for the firmware and the loaded binary.
 fn populate_allocator(info: &dyn bootinfo::Info, image_address: u64, image_size: u64) {
@@ -145,6 +144,39 @@ struct LoadedImageWrapper {
     entry_point: u64,
 }
 
+impl LoadedImageWrapper {
+    fn new(
+        file_path: *mut r_efi::protocols::device_path::Protocol,
+        parent_handle: Handle,
+        device_handle: Handle,
+        load_addr: u64,
+        load_size: u64,
+        entry_addr: u64,
+    ) -> LoadedImageWrapper {
+        LoadedImageWrapper {
+            hw: HandleWrapper {
+                handle_type: HandleType::LoadedImage,
+            },
+            proto: LoadedImageProtocol {
+                revision: r_efi::protocols::loaded_image::REVISION,
+                parent_handle,
+                system_table: unsafe { ST.get_mut() },
+                device_handle,
+                file_path,
+                load_options_size: 0,
+                load_options: null_mut(),
+                image_base: load_addr as *mut _,
+                image_size: load_size,
+                image_code_type: efi::LOADER_CODE,
+                image_data_type: efi::LOADER_DATA,
+                unload: boot_services::unload_image,
+                reserved: null_mut(),
+            },
+            entry_point: entry_addr,
+        }
+    }
+}
+
 fn new_image_handle(
     file_path: *mut r_efi::protocols::device_path::Protocol,
     parent_handle: Handle,
@@ -152,46 +184,50 @@ fn new_image_handle(
     load_addr: u64,
     load_size: u64,
     entry_addr: u64,
-) -> *mut LoadedImageWrapper {
-    let mut image = null_mut();
-    let status = boot_services::allocate_pool(
-        efi::LOADER_DATA,
-        size_of::<LoadedImageWrapper>(),
-        &mut image as *mut *mut c_void,
-    );
-    assert!(status == Status::SUCCESS);
-    let image = unsafe { &mut *(image as *mut LoadedImageWrapper) };
-    *image = LoadedImageWrapper {
-        hw: HandleWrapper {
-            handle_type: HandleType::LoadedImage,
-        },
-        proto: LoadedImageProtocol {
-            revision: r_efi::protocols::loaded_image::REVISION,
-            parent_handle,
-            system_table: unsafe { ST.get_mut() },
-            device_handle,
+) -> Result<Handle, protocol::Error> {
+    install_protocol_wrapper(
+        &loaded_image::PROTOCOL_GUID,
+        LoadedImageWrapper::new(
             file_path,
-            load_options_size: 0,
-            load_options: null_mut(),
-            image_base: load_addr as *mut _,
-            image_size: load_size,
-            image_code_type: efi::LOADER_CODE,
-            image_data_type: efi::LOADER_DATA,
-            unload: boot_services::unload_image,
-            reserved: null_mut(),
-        },
-        entry_point: entry_addr,
-    };
-    image
+            parent_handle,
+            device_handle,
+            load_addr,
+            load_size,
+            entry_addr,
+        ),
+    )
 }
 
-pub fn efi_exec(
+pub fn install_protocol_wrapper<T>(guid: &Guid, val: T) -> Result<efi::Handle, protocol::Error> {
+    let (status, address) = ALLOCATOR
+        .borrow_mut()
+        .allocate_pool(efi::LOADER_DATA, size_of::<T>());
+    assert!(status == Status::SUCCESS);
+
+    let wrapper = address as *mut T;
+    unsafe {
+        wrapper.write(val);
+    }
+    let handle = wrapper as *mut Handle;
+
+    match PROTOCOL_MANAGER.borrow_mut().install_protocol_interface(
+        handle,
+        guid,
+        efi::NATIVE_INTERFACE,
+        wrapper as *mut c_void,
+    ) {
+        Ok(_) => Ok(handle as efi::Handle),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn efi_exec<'a>(
     address: u64,
     loaded_address: u64,
     loaded_size: u64,
     info: &dyn bootinfo::Info,
     fs: &crate::fat::Filesystem,
-    block: &crate::block::VirtioBlockDevice,
+    block: &'a crate::block::VirtioBlockDevice<'a>,
 ) {
     let vendor_data = 0u32;
 
@@ -261,7 +297,7 @@ pub fn efi_exec(
 
     populate_allocator(info, loaded_address, loaded_size);
 
-    let efi_part_id = unsafe { block::populate_block_wrappers(BLOCK_WRAPPERS.get_mut(), block) };
+    let efi_part_id = block::populate_block_wrappers(block).unwrap();
 
     let wrapped_fs = file::FileSystemWrapper::new(fs, efi_part_id);
 
@@ -276,10 +312,11 @@ pub fn efi_exec(
         loaded_address,
         loaded_size,
         address,
-    );
+    )
+    .unwrap();
 
     let ptr = address as *const ();
     let code: extern "efiapi" fn(Handle, *mut efi::SystemTable) -> Status =
         unsafe { core::mem::transmute(ptr) };
-    (code)((image as *const _) as Handle, &mut *st);
+    (code)(image, &mut *st);
 }
