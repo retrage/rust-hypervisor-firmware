@@ -8,6 +8,7 @@ const MAX_VAR_NAME: usize = 64;
 const MAX_VAR_DATA: usize = 1024;
 const MAX_VAR_NUM: usize = 128;
 
+// TODO: Use EFI allocator to allocate memory for variable data
 #[derive(Debug)]
 struct Descriptor {
     name: Vec<u16, MAX_VAR_NAME>,
