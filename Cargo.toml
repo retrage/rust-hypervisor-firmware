@@ -28,7 +28,8 @@ efi-var = []
 [dependencies]
 bitflags = "2.6.0"
 atomic_refcell = "0.1.13"
-r-efi = { version = "4.5.0", features = ["efiapi"] }
+# r-efi = { version = "4.5.0", features = ["efiapi"] }
+r-efi = { git = "https://github.com/retrage/r-efi.git", branch = "rhf-support", features = ["efiapi"] }
 heapless = "0.8.0"
 log = "0.4.22"
 
