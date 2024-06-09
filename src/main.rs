@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright © 2019 Intel Corporation
 
+#![feature(abi_x86_interrupt)]
 #![feature(asm_const)]
 #![feature(exposed_provenance)]
 #![feature(slice_take)]
@@ -189,6 +190,7 @@ pub extern "C" fn rust64_start(#[cfg(not(feature = "coreboot"))] pvh_info: &pvh:
 
     arch::x86_64::sse::enable_sse();
     arch::x86_64::paging::setup();
+    arch::x86_64::idt::init();
 
     #[cfg(feature = "coreboot")]
     let info = &coreboot::StartInfo::default();
