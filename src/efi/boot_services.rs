@@ -664,25 +664,30 @@ pub extern "efiapi" fn install_multiple_protocol_interfaces(
     guid0: *mut c_void,
     interface0: *mut c_void,
 ) -> Status {
-    log!("install_multiple_protocol_interfaces");
-    if let Err(e) = PROTOCOL_MANAGER.borrow_mut().install_protocol_interface(
+    match PROTOCOL_MANAGER.borrow_mut().install_protocol_interface(
         handle,
         guid0 as *const Guid,
         efi::NATIVE_INTERFACE,
         interface0,
     ) {
-        return e.into();
+        Ok(_) => Status::SUCCESS,
+        Err(e) => e.into(),
     }
-    Status::SUCCESS
 }
 
 pub extern "efiapi" fn uninstall_multiple_protocol_interfaces(
-    _: Handle,
-    _: *mut c_void,
-    _: *mut c_void,
+    handle: Handle,
+    guid0: *mut c_void,
+    interface0: *mut c_void,
 ) -> Status {
-    log!("uninstall_multiple_protocol_interfaces");
-    Status::UNSUPPORTED
+    match PROTOCOL_MANAGER.borrow_mut().uninstall_protocol_interface(
+        handle,
+        guid0 as *const Guid,
+        interface0,
+    ) {
+        Ok(_) => Status::SUCCESS,
+        Err(e) => e.into(),
+    }
 }
 
 pub extern "efiapi" fn calculate_crc32(_: *mut c_void, _: usize, _: *mut u32) -> Status {
