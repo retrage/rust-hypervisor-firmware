@@ -114,6 +114,12 @@ pub const STDIN: SimpleTextInputProtocol = SimpleTextInputProtocol {
     wait_for_key: 0 as Event,
 };
 
+impl super::Protocol for SimpleTextInputProtocol {
+    fn as_proto(&mut self) -> *mut core::ffi::c_void {
+        self as *mut _ as *mut core::ffi::c_void
+    }
+}
+
 pub const STDOUT_OUTPUT_MODE: SimpleTextOutputMode = SimpleTextOutputMode {
     max_mode: 1,
     mode: 0,
@@ -122,6 +128,12 @@ pub const STDOUT_OUTPUT_MODE: SimpleTextOutputMode = SimpleTextOutputMode {
     cursor_row: 0,
     cursor_visible: Boolean::FALSE,
 };
+
+impl super::Protocol for SimpleTextOutputProtocol {
+    fn as_proto(&mut self) -> *mut core::ffi::c_void {
+        self as *mut _ as *mut core::ffi::c_void
+    }
+}
 
 pub const STDOUT: SimpleTextOutputProtocol = SimpleTextOutputProtocol {
     reset: stdout_reset,
@@ -136,10 +148,18 @@ pub const STDOUT: SimpleTextOutputProtocol = SimpleTextOutputProtocol {
     mode: &STDOUT_OUTPUT_MODE as *const SimpleTextOutputMode as *mut SimpleTextOutputMode,
 };
 
-pub fn populate_stdin_wrapper() -> Result<Handle, super::protocol::Error> {
-    super::install_protocol_wrapper(&r_efi::protocols::simple_text_input::PROTOCOL_GUID, STDIN)
+pub fn populate_stdin_wrapper(handle: Option<Handle>) -> Result<Handle, super::protocol::Error> {
+    super::install_protocol_wrapper(
+        handle,
+        &r_efi::protocols::simple_text_input::PROTOCOL_GUID,
+        STDIN,
+    )
 }
 
-pub fn populate_stdout_wrapper() -> Result<Handle, super::protocol::Error> {
-    super::install_protocol_wrapper(&r_efi::protocols::simple_text_output::PROTOCOL_GUID, STDOUT)
+pub fn populate_stdout_wrapper(handle: Option<Handle>) -> Result<Handle, super::protocol::Error> {
+    super::install_protocol_wrapper(
+        handle,
+        &r_efi::protocols::simple_text_output::PROTOCOL_GUID,
+        STDOUT,
+    )
 }

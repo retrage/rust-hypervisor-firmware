@@ -252,7 +252,6 @@ struct FileWrapper<'a> {
 pub struct FileSystemWrapper<'a> {
     pub fs: &'a crate::fat::Filesystem<'a>,
     pub proto: SimpleFileSystemProtocol,
-    pub block_part_id: Option<u32>,
 }
 
 impl<'a> FileSystemWrapper<'a> {
@@ -289,7 +288,6 @@ impl<'a> FileSystemWrapper<'a> {
 
     pub fn new(
         fs: &'a crate::fat::Filesystem,
-        block_part_id: Option<u32>,
     ) -> FileSystemWrapper<'a> {
         FileSystemWrapper {
             fs,
@@ -297,17 +295,23 @@ impl<'a> FileSystemWrapper<'a> {
                 revision: r_efi::protocols::simple_file_system::REVISION,
                 open_volume: filesystem_open_volume,
             },
-            block_part_id,
         }
     }
 }
 
+impl super::Protocol for FileSystemWrapper<'_> {
+    fn as_proto(&mut self) -> *mut core::ffi::c_void {
+        &mut self.proto as *mut _ as *mut core::ffi::c_void
+    }
+}
+
 pub fn populate_fs_wrapper<'a>(
+    handle: Option<efi::Handle>,
     fs: &'a crate::fat::Filesystem,
-    block_part_id: Option<u32>,
 ) -> Result<efi::Handle, super::protocol::Error> {
     super::install_protocol_wrapper(
+        handle,
         &r_efi::protocols::simple_file_system::PROTOCOL_GUID,
-        FileSystemWrapper::new(fs, block_part_id),
+        FileSystemWrapper::new(fs),
     )
 }

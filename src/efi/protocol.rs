@@ -14,6 +14,8 @@ use core::{
 use heapless::{FnvIndexMap, FnvIndexSet, Vec};
 use r_efi::efi::{self};
 
+use crate::efi::ALLOCATOR;
+
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum Error {
@@ -40,6 +42,7 @@ impl From<Error> for efi::Status {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct WrappedHandle(NonNull<c_void>);
 
 impl Borrow<efi::Handle> for WrappedHandle {
@@ -47,21 +50,10 @@ impl Borrow<efi::Handle> for WrappedHandle {
         unsafe { &*(self.0.as_ptr() as *const efi::Handle) }
     }
 }
-impl Eq for WrappedHandle {}
-impl PartialEq for WrappedHandle {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
-impl core::hash::Hash for WrappedHandle {
-    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
-    }
-}
 
 impl WrappedHandle {
-    fn new(handle: efi::Handle) -> Self {
-        Self(NonNull::new(handle).unwrap())
+    fn new(handle: efi::Handle) -> Option<Self> {
+        NonNull::new(handle).map(|n| Self { 0: n })
     }
 
     fn as_ptr(&self) -> *const c_void {
@@ -71,6 +63,12 @@ impl WrappedHandle {
     #[allow(dead_code)]
     fn as_mut_ptr(&mut self) -> *mut c_void {
         self.0.as_ptr()
+    }
+}
+
+impl From<WrappedHandle> for efi::Handle {
+    fn from(handle: WrappedHandle) -> Self {
+        *handle.borrow()
     }
 }
 
@@ -93,15 +91,11 @@ impl Protocol {
     pub fn new(guid: efi::Guid, interface: NonNull<c_void>) -> Self {
         Self { guid, interface }
     }
-
-    // fn is_empty(&self) -> bool {
-    //     self.guid == efi::Guid::from_bytes(&[0u8; 16]) && self.interface.is_null()
-    // }
 }
 
 struct OpenProtocolData {
-    agent_handle: WrappedHandle,
-    controller_handle: WrappedHandle,
+    agent_handle: Option<WrappedHandle>,
+    controller_handle: Option<WrappedHandle>,
     attributes: u32,
     open_count: u32,
 }
@@ -113,6 +107,7 @@ impl OpenProtocolData {
         controller_handle: efi::Handle,
         attributes: Option<u32>,
     ) -> bool {
+        log!("OpenProtocolData::matches: agent_handle: {:p}, controller_handle: {:p}, attributes: {:x}", agent_handle, controller_handle, attributes.unwrap_or(0));
         self.agent_handle == WrappedHandle::new(agent_handle)
             && self.controller_handle == WrappedHandle::new(controller_handle)
             && (attributes.is_none() || self.attributes == attributes.unwrap())
@@ -148,6 +143,43 @@ impl ProtocolManager {
         }
     }
 
+    pub fn locate_device_handle(&self, guid: &efi::Guid) -> Option<usize> {
+        for (handle, protocols) in self.protocols.iter() {
+            for protocol in protocols.iter() {
+                if protocol.guid == *guid {
+                    log!("locate_device_handle: {:?}", handle.as_ptr().addr());
+                    return Some(handle.as_ptr().addr());
+                }
+            }
+        }
+        None
+    }
+
+    fn dump_protocols(&self) {
+        log!("dump_protocols");
+        for (handle, protocols) in self.protocols.iter() {
+            log!("Handle: {:p}", handle.as_ptr());
+            for protocol in protocols.iter() {
+                log!("  Protocol: {:?}", protocol.guid);
+            }
+        }
+        for (protocol, open_list) in self.open_lists.iter() {
+            if open_list.is_empty() {
+                continue;
+            }
+            log!("Protocol: {:?}", protocol.guid);
+            for open_data in open_list.iter() {
+                log!(
+                    "  Agent: {:?}, Controller: {:?}, Attributes: {:x}, OpenCount: {}",
+                    open_data.agent_handle,
+                    open_data.controller_handle,
+                    open_data.attributes,
+                    open_data.open_count
+                );
+            }
+        }
+    }
+
     pub fn install_protocol_interface(
         &mut self,
         handle: *mut efi::Handle,
@@ -155,18 +187,26 @@ impl ProtocolManager {
         interface_type: efi::InterfaceType,
         interface: *mut c_void,
     ) -> Result<(), Error> {
-        // TODO: Allow handle to be null
+        log!(
+            "install_protocol_interface: handle: {:p}, protocol_guid: {:?}, interface_type: {:?}, interface: {:p}",
+            handle,
+            unsafe { &*protocol_guid },
+            interface_type,
+            interface
+        );
         if handle.is_null() || protocol_guid.is_null() || interface_type != efi::NATIVE_INTERFACE {
-            log!(
-                "handle: {:p}, protocol_guid: {:p}, interface_type: {:?}, interface: {:p}",
-                handle,
-                protocol_guid,
-                interface_type,
-                interface
-            );
             return Err(Error::InvalidParameter);
         }
-        let handle = WrappedHandle::new(unsafe { *handle });
+        if unsafe { *handle } == null_mut() {
+            // Create a new handle
+            let (status, handle_addr) = ALLOCATOR
+                .borrow_mut()
+                .allocate_pool(efi::LOADER_DATA, size_of::<efi::Handle>());
+            assert!(status == efi::Status::SUCCESS);
+            unsafe { *handle = handle_addr as efi::Handle };
+        }
+        log!("handle: {:p}", unsafe { *handle });
+        let handle = WrappedHandle::new(unsafe { *handle }).unwrap();
         let protocol_guid = unsafe { *protocol_guid };
         match self.protocols.get_mut(&handle) {
             Some(protocols) => {
@@ -175,7 +215,11 @@ impl ProtocolManager {
                 }
                 for protocol in protocols.iter() {
                     if protocol.guid == protocol_guid {
-                        log!("Protocol already installed");
+                        log!(
+                            "Protocol already installed: handle: {:?}, protocol: {:?}",
+                            handle,
+                            protocol.guid
+                        );
                         // return Err(Error::InvalidParameter);
                         continue;
                     }
@@ -184,9 +228,25 @@ impl ProtocolManager {
                 protocols
                     .push(protocol)
                     .map_err(|_| Error::OutOfResources)?;
+                match self.open_lists.get_mut(&protocol) {
+                    Some(open_list) => {
+                        for open_data in open_list.iter_mut() {
+                            if open_data.agent_handle == Some(handle) {
+                                open_data.open_count += 1;
+                            }
+                        }
+                    }
+                    None => {
+                        let open_list = Vec::new();
+                        self.open_lists
+                            .insert(protocol, open_list)
+                            .map_err(|_| Error::OutOfResources)?;
+                    }
+                }
                 Ok(())
             }
             None => {
+                log!("no handle found for handle {:?}", handle);
                 let mut protocols = Vec::new();
                 let protocol = Protocol::new(protocol_guid, NonNull::new(interface).unwrap());
                 protocols
@@ -195,6 +255,21 @@ impl ProtocolManager {
                 self.protocols
                     .insert(handle, protocols)
                     .map_err(|_| Error::OutOfResources)?;
+                match self.open_lists.get_mut(&protocol) {
+                    Some(open_list) => {
+                        for open_data in open_list.iter_mut() {
+                            if open_data.agent_handle == Some(handle) {
+                                open_data.open_count += 1;
+                            }
+                        }
+                    }
+                    None => {
+                        let open_list = Vec::new();
+                        self.open_lists
+                            .insert(protocol, open_list)
+                            .map_err(|_| Error::OutOfResources)?;
+                    }
+                }
                 Ok(())
             }
         }
@@ -209,7 +284,7 @@ impl ProtocolManager {
         if handle.is_null() || protocol_guid.is_null() {
             return Err(Error::InvalidParameter);
         }
-        let handle = WrappedHandle::new(handle);
+        let handle = WrappedHandle::new(handle).unwrap();
         let protocol_guid = unsafe { *protocol_guid };
         match self.protocols.get_mut(&handle) {
             Some(protocols) => {
@@ -236,7 +311,7 @@ impl ProtocolManager {
         if handle.is_null() || protocol_guid.is_null() {
             return Err(Error::InvalidParameter);
         }
-        let handle = WrappedHandle::new(handle);
+        let handle = WrappedHandle::new(handle).unwrap();
         let protocol_guid = unsafe { *protocol_guid };
         match self.protocols.get_mut(&handle) {
             Some(protocols) => {
@@ -272,6 +347,10 @@ impl ProtocolManager {
         buffer_size: *mut usize,
         buffer: *mut efi::Handle,
     ) -> Result<(), Error> {
+        log!("locate_handle: search_type: {:?}, protocol_guid: {:?}, search_key: {:p}, buffer_size: {:p}, buffer: {:p}", search_type, unsafe { &*protocol_guid}, search_key, buffer_size, buffer);
+        if unsafe { *protocol_guid } == efi::protocols::device_path::PROTOCOL_GUID {
+            log!("locate_handle: device_path");
+        }
         let handles = match search_type {
             efi::ALL_HANDLES => self
                 .protocols
@@ -305,6 +384,7 @@ impl ProtocolManager {
         }
         let buffer_size = unsafe { buffer_size.as_mut().unwrap() };
         let needed_size = size_of::<efi::Handle>() * handles.len();
+        log!("needed_size: {}, buffer_size: {}", needed_size, *buffer_size);
         if *buffer_size < needed_size {
             *buffer_size = needed_size;
             return Err(Error::BufferTooSmall);
@@ -315,7 +395,9 @@ impl ProtocolManager {
         let buffer = unsafe { core::slice::from_raw_parts_mut(buffer, handles.len()) };
         for (idx, handle) in handles.iter().enumerate() {
             buffer[idx] = handle.as_ptr() as *mut c_void;
+            log!("locate_handle: buffer[{}]: {:p}", idx, buffer[idx]);
         }
+        *buffer_size = needed_size;
         Ok(())
     }
 
@@ -325,6 +407,13 @@ impl ProtocolManager {
         protocol_guid: *const efi::Guid,
         interface: *mut *mut c_void,
     ) -> Result<(), Error> {
+        log!(
+            "handle_protocol: handle: {:p}, protocol_guid: {:?}, interface: {:p}",
+            handle,
+            unsafe { *protocol_guid },
+            interface
+        );
+        self.dump_protocols();
         self.open_protocol(
             handle,
             protocol_guid,
@@ -335,6 +424,7 @@ impl ProtocolManager {
         )
     }
 
+    // Locates the handle to a device on the device path that supports the specified protocol.
     pub fn locate_device_path(
         &mut self,
         _protocol: *mut efi::Guid,
@@ -345,6 +435,7 @@ impl ProtocolManager {
     }
 
     // It does not support the following attributes:
+    // - OPEN_PROTOCOL_BY_HANDLE_PROTOCOL
     // - OPEN_PROTOCOL_BY_CHILD_CONTROLLER
     // - OPEN_PROTOCOL_BY_DRIVER
     // - OPEN_PROTOCOL_EXCLUSIVE
@@ -357,13 +448,22 @@ impl ProtocolManager {
         controller_handle: efi::Handle,
         attributes: u32,
     ) -> Result<(), Error> {
+        log!("open_protocol: user_handle: {:p}, protocol_guid: {:?}, interface: {:p}, agent_handle: {:p}, controller_handle: {:p}, attributes: {:x}", user_handle, unsafe { *protocol_guid }, interface, agent_handle, controller_handle, attributes);
+        if user_handle.addr() == 0x2 {
+            unsafe {
+                core::arch::asm!("int3");
+            }
+        }
+        if unsafe { *protocol_guid } == efi::protocols::device_path::PROTOCOL_GUID {
+            log!("open_protocol: device_path");
+        }
         if protocol_guid.is_null() {
             return Err(Error::InvalidParameter);
         }
         if attributes == efi::OPEN_PROTOCOL_TEST_PROTOCOL && interface.is_null() {
             return Err(Error::InvalidParameter);
         }
-        let user_handle = WrappedHandle::new(user_handle);
+        let user_handle = WrappedHandle::new(user_handle).unwrap();
         let protocol_guid = unsafe { *protocol_guid };
         let prot = self
             .protocols
@@ -379,6 +479,7 @@ impl ProtocolManager {
                     if open_data.matches(agent_handle, controller_handle, Some(attributes)) {
                         open_data.open_count += 1;
                         if attributes != efi::OPEN_PROTOCOL_TEST_PROTOCOL {
+                            log!("open_protocol: interface: {:p}", prot.interface.as_ptr());
                             unsafe { *interface = prot.interface.as_ptr() };
                         }
                         return Ok(());
@@ -402,6 +503,12 @@ impl ProtocolManager {
             return Ok(());
         }
 
+        log!(
+            "open_protocol: agent_handle: {:p}, controller_handle: {:p}, attributes: {:x}",
+            agent_handle,
+            controller_handle,
+            attributes
+        );
         open_list
             .push(OpenProtocolData {
                 agent_handle: WrappedHandle::new(agent_handle),
@@ -410,7 +517,9 @@ impl ProtocolManager {
                 open_count: 1,
             })
             .map_err(|_| Error::OutOfResources)?;
+        log!("open_protocol: open_list.len(): {}", open_list.len());
 
+        log!("open_protocol: interface: {:p}", prot.interface.as_ptr());
         if attributes != efi::OPEN_PROTOCOL_TEST_PROTOCOL {
             unsafe { *interface = prot.interface.as_ptr() };
         }
@@ -427,7 +536,7 @@ impl ProtocolManager {
         if user_handle.is_null() || agent_handle.is_null() || protocol.is_null() {
             return Err(Error::InvalidParameter);
         }
-        let user_handle = WrappedHandle::new(user_handle);
+        let user_handle = WrappedHandle::new(user_handle).unwrap();
         let prot = self
             .protocols
             .get(&user_handle)
@@ -495,7 +604,7 @@ impl ProtocolManager {
         if handle.is_null() || protocol_buffer.is_null() || protocol_buffer_count.is_null() {
             return Err(Error::InvalidParameter);
         }
-        let handle = WrappedHandle::new(handle);
+        let handle = WrappedHandle::new(handle).unwrap();
         let protocol_buffer = unsafe { *protocol_buffer };
         let protocols = match self.protocols.get(&handle) {
             Some(protocols) => protocols,
@@ -550,5 +659,20 @@ impl ProtocolManager {
             }
         }
         Err(Error::NotFound)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WrappedHandle;
+
+    #[test]
+    fn test_handle() {
+        let handle1 = WrappedHandle::new(0x1234 as *mut core::ffi::c_void);
+        let handle2 = WrappedHandle::new(0x1234 as *mut core::ffi::c_void);
+        assert_eq!(handle1, handle2);
+
+        let handle3 = WrappedHandle::new(0x5678 as *mut core::ffi::c_void);
+        assert_ne!(handle1, handle3);
     }
 }
