@@ -9,7 +9,7 @@ use r_efi::{
         LocateSearchType, MemoryDescriptor, MemoryType, OpenProtocolInformationEntry,
         PhysicalAddress, Status, TimerDelay, Tpl,
     },
-    protocols::device_path::Protocol as DevicePathProtocol,
+    protocols::{device_path::Protocol as DevicePathProtocol, loaded_image, simple_file_system},
 };
 
 #[cfg(target_arch = "riscv64")]
@@ -83,25 +83,6 @@ pub static mut CT: SyncUnsafeCell<[efi::ConfigurationTable; MAX_CT_ENTRIES]> = S
         vendor_table: null_mut(),
     }; MAX_CT_ENTRIES],
 );
-
-fn log_guid(guid: &Guid) {
-    let (time_low, time_mid, time_hi_and_version, clk_seq_hi_res, clk_seq_low, node) =
-        guid.as_fields();
-    log!(
-        "{:08x}-{:04x}-{:04x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        time_low,
-        time_mid,
-        time_hi_and_version,
-        clk_seq_hi_res,
-        clk_seq_low,
-        node[0],
-        node[1],
-        node[2],
-        node[3],
-        node[4],
-        node[5],
-    );
-}
 
 pub extern "efiapi" fn raise_tpl(_: Tpl) -> Tpl {
     0
@@ -230,34 +211,12 @@ pub extern "efiapi" fn check_event(_: Event) -> Status {
     Status::UNSUPPORTED
 }
 
-#[allow(dead_code)]
-const SHIM_LOCK_PROTOCOL_GUID: Guid = Guid::from_fields(
-    0x605d_ab50,
-    0xe046,
-    0x4300,
-    0xab,
-    0xb6,
-    &[0x3d, 0xd8, 0x10, 0xdd, 0x8b, 0x23],
-);
-
 pub extern "efiapi" fn install_protocol_interface(
     handle: *mut Handle,
     guid: *mut Guid,
     interface_type: InterfaceType,
     interface: *mut c_void,
 ) -> Status {
-    log!(
-        "install_protocol_interface: {:p} {:p} {:?} {:p}\n",
-        handle,
-        guid,
-        interface_type,
-        interface
-    );
-    // if unsafe { *guid } == SHIM_LOCK_PROTOCOL_GUID {
-    //     Status::SUCCESS
-    // } else {
-    //     Status::UNSUPPORTED
-    // }
     match PROTOCOL_MANAGER.borrow_mut().install_protocol_interface(
         handle,
         guid,
@@ -275,13 +234,6 @@ pub extern "efiapi" fn reinstall_protocol_interface(
     old_interface: *mut c_void,
     new_interface: *mut c_void,
 ) -> Status {
-    log!(
-        "reinstall_protocol_interface: {:?} {:p} {:p} {:p}\n",
-        handle,
-        guid,
-        old_interface,
-        new_interface
-    );
     match PROTOCOL_MANAGER.borrow_mut().reinstall_protocol_interface(
         handle,
         guid,
@@ -298,12 +250,6 @@ pub extern "efiapi" fn uninstall_protocol_interface(
     guid: *mut Guid,
     interface: *mut c_void,
 ) -> Status {
-    log!(
-        "uninstall_protocol_interface: {:?} {:p} {:p}\n",
-        handle,
-        guid,
-        interface
-    );
     match PROTOCOL_MANAGER
         .borrow_mut()
         .uninstall_protocol_interface(handle, guid, interface)
@@ -318,17 +264,12 @@ pub extern "efiapi" fn handle_protocol(
     guid: *mut Guid,
     interface: *mut *mut c_void,
 ) -> Status {
-    log!("handle_protocol: {:?} {:p} {:p}\n", handle, guid, interface);
-    log_guid(unsafe { &*guid });
     match PROTOCOL_MANAGER
         .borrow_mut()
         .handle_protocol(handle, guid, interface)
     {
         Ok(_) => Status::SUCCESS,
-        Err(e) => {
-            log!("handle_protocol: {:?}\n", e);
-            e.into()
-        }
+        Err(e) => e.into(),
     }
 }
 
@@ -337,12 +278,6 @@ pub extern "efiapi" fn register_protocol_notify(
     event: Event,
     registration: *mut *mut c_void,
 ) -> Status {
-    log!(
-        "register_protocol_notify: {:p} {:p} {:p}\n",
-        protocol,
-        event,
-        registration
-    );
     match PROTOCOL_MANAGER
         .borrow_mut()
         .register_protocol_notify(protocol, event, registration)
@@ -359,74 +294,20 @@ pub extern "efiapi" fn locate_handle(
     size: *mut usize,
     handles: *mut Handle,
 ) -> Status {
-    log!(
-        "locate_handle: {:?} {:p} {:p} {:p} {:p}\n",
-        search_type,
-        guid,
-        search_key,
-        size,
-        handles
-    );
-    log_guid(unsafe { &*guid });
     match PROTOCOL_MANAGER
         .borrow_mut()
         .locate_handle(search_type, guid, search_key, size, handles)
     {
         Ok(_) => Status::SUCCESS,
-        Err(e) => {
-            log!("locate_handle: {:?}\n", e);
-            e.into()
-        }
+        Err(e) => e.into(),
     }
 }
-
-/*
-pub extern "efiapi" fn locate_handle(
-    _: LocateSearchType,
-    guid: *mut Guid,
-    _: *mut c_void,
-    size: *mut usize,
-    handles: *mut Handle,
-) -> Status {
-    if unsafe { *guid } == r_efi::protocols::block_io::PROTOCOL_GUID {
-        let count = unsafe { BLOCK_WRAPPERS.get_mut().count };
-        if unsafe { *size } < size_of::<Handle>() * count {
-            unsafe { *size = size_of::<Handle>() * count };
-            return Status::BUFFER_TOO_SMALL;
-        }
-
-        let handles =
-            unsafe { core::slice::from_raw_parts_mut(handles, *size / size_of::<Handle>()) };
-
-        let wrappers_as_handles: &[Handle] = unsafe {
-            core::slice::from_raw_parts_mut(
-                BLOCK_WRAPPERS.get_mut().wrappers.as_mut_ptr() as *mut Handle,
-                count,
-            )
-        };
-
-        handles[0..count].copy_from_slice(wrappers_as_handles);
-
-        unsafe { *size = size_of::<Handle>() * count };
-
-        return Status::SUCCESS;
-    }
-
-    Status::UNSUPPORTED
-}
-*/
 
 pub extern "efiapi" fn locate_device_path(
     protocol: *mut Guid,
     device_path: *mut *mut DevicePathProtocol,
     device: *mut Handle,
 ) -> Status {
-    log!(
-        "locate_device_path: {:p} {:p} {:p}\n",
-        protocol,
-        device_path,
-        device
-    );
     match PROTOCOL_MANAGER
         .borrow_mut()
         .locate_device_path(protocol, device_path, device)
@@ -599,13 +480,6 @@ pub extern "efiapi" fn connect_controller(
     remaining_device_path: *mut DevicePathProtocol,
     recursive: Boolean,
 ) -> Status {
-    log!(
-        "connect_controller: {:?} {:p} {:p} {:?}\n",
-        controller_handle,
-        driver_image_handle,
-        remaining_device_path,
-        recursive
-    );
     match PROTOCOL_MANAGER.borrow_mut().connect_controller(
         controller_handle,
         driver_image_handle,
@@ -622,12 +496,6 @@ pub extern "efiapi" fn disconnect_controller(
     driver_image_handle: Handle,
     child_handle: Handle,
 ) -> Status {
-    log!(
-        "disconnect_controller: {:?} {:?} {:?}\n",
-        controller_handle,
-        driver_image_handle,
-        child_handle
-    );
     match PROTOCOL_MANAGER.borrow_mut().disconnect_controller(
         controller_handle,
         driver_image_handle,
@@ -646,15 +514,6 @@ pub extern "efiapi" fn open_protocol(
     controller_handle: Handle,
     attributes: u32,
 ) -> Status {
-    log!(
-        "open_protocol: {:?} {:p} {:p} {:p} {:p} {:x}\n",
-        user_handle,
-        protocol_guid,
-        interface,
-        agent_handle,
-        controller_handle,
-        attributes
-    );
     match PROTOCOL_MANAGER.borrow_mut().open_protocol(
         user_handle,
         protocol_guid,
@@ -668,86 +527,12 @@ pub extern "efiapi" fn open_protocol(
     }
 }
 
-/*
-pub extern "efiapi" fn open_protocol(
-    handle: Handle,
-    guid: *mut Guid,
-    out: *mut *mut c_void,
-    _: Handle,
-    _: Handle,
-    _: u32,
-) -> Status {
-    let hw = handle as *const HandleWrapper;
-    let handle_type = unsafe { (*hw).handle_type };
-    if unsafe { *guid } == r_efi::protocols::loaded_image::PROTOCOL_GUID
-        && handle_type == HandleType::LoadedImage
-    {
-        unsafe {
-            *out = &mut (*(handle as *mut LoadedImageWrapper)).proto as *mut _ as *mut c_void;
-        }
-        return Status::SUCCESS;
-    }
-
-    if unsafe { *guid } == r_efi::protocols::simple_file_system::PROTOCOL_GUID
-        && handle_type == HandleType::FileSystem
-    {
-        unsafe {
-            *out = &mut (*(handle as *mut file::FileSystemWrapper)).proto as *mut _ as *mut c_void;
-        }
-        return Status::SUCCESS;
-    }
-
-    if unsafe { *guid } == r_efi::protocols::device_path::PROTOCOL_GUID
-        && handle_type == HandleType::Block
-    {
-        unsafe {
-            *out = &mut (*(handle as *mut block::BlockWrapper)).controller_path as *mut _
-                as *mut c_void;
-        }
-
-        return Status::SUCCESS;
-    }
-
-    if unsafe { *guid } == r_efi::protocols::device_path::PROTOCOL_GUID
-        && handle_type == HandleType::FileSystem
-    {
-        unsafe {
-            if let Some(block_part_id) = (*(handle as *mut file::FileSystemWrapper)).block_part_id {
-                *out = (&mut (*(BLOCK_WRAPPERS.get_mut().wrappers[block_part_id as usize]))
-                    .controller_path) as *mut _ as *mut c_void;
-
-                return Status::SUCCESS;
-            }
-        }
-    }
-
-    if unsafe { *guid } == r_efi::protocols::block_io::PROTOCOL_GUID
-        && handle_type == HandleType::Block
-    {
-        unsafe {
-            *out = &mut (*(handle as *mut block::BlockWrapper)).proto as *mut _ as *mut c_void;
-        }
-
-        return Status::SUCCESS;
-    }
-
-    Status::UNSUPPORTED
-}
-*/
-
 pub extern "efiapi" fn close_protocol(
     user_handle: Handle,
     protocol: *mut Guid,
     agent_handle: Handle,
     controller_handle: Handle,
 ) -> Status {
-    log!(
-        "close_protocol: {:?} {:p} {:?} {:?}\n",
-        user_handle,
-        protocol,
-        agent_handle,
-        controller_handle
-    );
     match PROTOCOL_MANAGER.borrow_mut().close_protocol(
         user_handle,
         protocol,
@@ -765,13 +550,6 @@ pub extern "efiapi" fn open_protocol_information(
     entry_buffer: *mut *mut OpenProtocolInformationEntry,
     entry_count: *mut usize,
 ) -> Status {
-    log!(
-        "open_protocol_information: {:?} {:p} {:p} {:p}\n",
-        handle,
-        protocol_guid,
-        entry_buffer,
-        entry_count
-    );
     match PROTOCOL_MANAGER.borrow_mut().open_protocol_information(
         handle,
         protocol_guid,
@@ -788,12 +566,6 @@ pub extern "efiapi" fn protocols_per_handle(
     protocol_buffer: *mut *mut *mut Guid,
     protocol_buffer_count: *mut usize,
 ) -> Status {
-    log!(
-        "protocols_per_handle: {:?} {:p} {:p}\n",
-        handle,
-        protocol_buffer,
-        protocol_buffer_count
-    );
     match PROTOCOL_MANAGER.borrow_mut().protocols_per_handle(
         handle,
         protocol_buffer,
@@ -811,14 +583,6 @@ pub extern "efiapi" fn locate_handle_buffer(
     no_handles: *mut usize,
     buffer: *mut *mut Handle,
 ) -> Status {
-    log!(
-        "locate_handle_buffer: {:?} {:p} {:p} {:p} {:p}\n",
-        search_type,
-        protocol,
-        search_key,
-        no_handles,
-        buffer
-    );
     match PROTOCOL_MANAGER.borrow_mut().locate_handle_buffer(
         search_type,
         protocol,
@@ -869,12 +633,6 @@ pub extern "efiapi" fn locate_protocol(
     registration: *mut c_void,
     interface: *mut *mut c_void,
 ) -> Status {
-    log!(
-        "locate_protocol: {:p} {:p} {:p}\n",
-        guid,
-        registration,
-        interface
-    );
     match PROTOCOL_MANAGER
         .borrow_mut()
         .locate_protocol(guid, registration, interface)
@@ -882,13 +640,6 @@ pub extern "efiapi" fn locate_protocol(
         Ok(_) => Status::SUCCESS,
         Err(e) => e.into(),
     }
-    // #[cfg(target_arch = "riscv64")]
-    // if unsafe { *_guid } == RISV_V_BOOT_PROTOCOL_GUID {
-    //     unsafe { *_out = &RISC_V_BOOT_PROTOCOL as *const RiscVBootProtocol as *mut c_void };
-    //     return Status::SUCCESS;
-    // }
-    // // XXX: A recent version of Linux kernel fails to boot if EFI_UNSUPPORTED returned.
-    // Status::NOT_FOUND
 }
 
 pub extern "efiapi" fn install_multiple_protocol_interfaces(
