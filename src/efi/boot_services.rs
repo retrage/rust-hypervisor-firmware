@@ -612,39 +612,6 @@ pub extern "efiapi" fn locate_handle_buffer(
     }
 }
 
-#[allow(dead_code)]
-#[cfg(target_arch = "riscv64")]
-#[repr(C)]
-struct RiscVBootProtocol {
-    revision: u64,
-    get_boot_hart_id: eficall! {fn(*const RiscVBootProtocol, *mut u64) -> Status },
-}
-
-#[allow(dead_code)]
-#[cfg(target_arch = "riscv64")]
-extern "efiapi" fn get_boot_hart_id(_: *const RiscVBootProtocol, hart: *mut u64) -> Status {
-    unsafe { *hart = 0 };
-    Status::SUCCESS
-}
-
-#[allow(dead_code)]
-#[cfg(target_arch = "riscv64")]
-const RISC_V_BOOT_PROTOCOL: RiscVBootProtocol = RiscVBootProtocol {
-    revision: 0,
-    get_boot_hart_id,
-};
-
-#[allow(dead_code)]
-#[cfg(target_arch = "riscv64")]
-pub const RISV_V_BOOT_PROTOCOL_GUID: Guid = Guid::from_fields(
-    0xccd15fec,
-    0x6f73,
-    0x4eec,
-    0x83,
-    0x95,
-    &[0x3e, 0x69, 0xe4, 0xb9, 0x40, 0xbf],
-);
-
 pub extern "efiapi" fn locate_protocol(
     guid: *mut Guid,
     registration: *mut c_void,
