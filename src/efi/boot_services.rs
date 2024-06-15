@@ -676,8 +676,6 @@ pub extern "efiapi" fn install_multiple_protocol_interfaces(
     handle: *mut Handle,
     guid0: *mut c_void,
     interface0: *mut c_void,
-    guid1: *mut c_void,
-    interface1: *mut c_void,
 ) -> Status {
     log!("install_multiple_protocol_interfaces");
     if let Err(e) = PROTOCOL_MANAGER.borrow_mut().install_protocol_interface(
@@ -688,21 +686,11 @@ pub extern "efiapi" fn install_multiple_protocol_interfaces(
     ) {
         return e.into();
     }
-    if let Err(e) = PROTOCOL_MANAGER.borrow_mut().install_protocol_interface(
-        handle,
-        guid1 as *const Guid,
-        efi::NATIVE_INTERFACE,
-        interface1,
-    ) {
-        return e.into();
-    }
     Status::SUCCESS
 }
 
 pub extern "efiapi" fn uninstall_multiple_protocol_interfaces(
     _: Handle,
-    _: *mut c_void,
-    _: *mut c_void,
     _: *mut c_void,
     _: *mut c_void,
 ) -> Status {
