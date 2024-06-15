@@ -52,7 +52,7 @@ impl Borrow<efi::Handle> for WrappedHandle {
 
 impl WrappedHandle {
     fn new(handle: efi::Handle) -> Option<Self> {
-        NonNull::new(handle).map(|n| Self { 0: n })
+        NonNull::new(handle).map(Self)
     }
 
     fn as_ptr(&self) -> *const c_void {
@@ -177,7 +177,7 @@ impl ProtocolManager {
         if handle.is_null() || protocol_guid.is_null() || interface_type != efi::NATIVE_INTERFACE {
             return Err(Error::InvalidParameter);
         }
-        if unsafe { *handle } == null_mut() {
+        if unsafe { (*handle).is_null() } {
             // Create a new handle
             let (status, handle_addr) = ALLOCATOR
                 .borrow_mut()

@@ -303,9 +303,9 @@ impl super::Protocol for FileSystemWrapper<'_> {
     }
 }
 
-pub fn populate_fs_wrapper<'a>(
+pub fn populate_fs_wrapper(
     handle: Option<efi::Handle>,
-    fs: &'a crate::fat::Filesystem,
+    fs: &crate::fat::Filesystem,
 ) -> Result<efi::Handle, super::protocol::Error> {
     super::install_protocol_wrapper(
         handle,

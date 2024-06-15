@@ -324,14 +324,14 @@ pub fn efi_exec<'a>(
         .borrow_mut()
         .allocate_pool(efi::BOOT_SERVICES_DATA, size_of::<efi::Handle>());
     assert!(status == efi::Status::SUCCESS);
-    let core_handle = Some(handle_addr as efi::Handle);
+    let core_handle = handle_addr as efi::Handle;
 
-    let dp_handle = block::populate_block_wrappers(core_handle, block).unwrap();
+    let dp_handle = block::populate_block_wrappers(Some(core_handle), block).unwrap();
 
     let fs_handle = file::populate_fs_wrapper(Some(dp_handle), fs).unwrap();
 
-    let stdin_handle = console::populate_stdin_wrapper(core_handle).unwrap();
-    let stdout_handle = console::populate_stdout_wrapper(core_handle).unwrap();
+    let stdin_handle = console::populate_stdin_wrapper(Some(core_handle)).unwrap();
+    let stdout_handle = console::populate_stdout_wrapper(Some(core_handle)).unwrap();
 
     let mut stdin = console::STDIN;
     let mut stdout = console::STDOUT;
@@ -354,7 +354,7 @@ pub fn efi_exec<'a>(
     let image = new_image_handle(
         None,
         device_path.generate(),
-        core_handle.unwrap(),
+        core_handle,
         fs_handle,
         loaded_address,
         loaded_size,
