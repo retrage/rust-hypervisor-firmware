@@ -285,9 +285,7 @@ impl<'a> FileSystemWrapper<'a> {
         }
     }
 
-    pub fn new(
-        fs: &'a crate::fat::Filesystem,
-    ) -> FileSystemWrapper<'a> {
+    pub fn new(fs: &'a crate::fat::Filesystem) -> FileSystemWrapper<'a> {
         FileSystemWrapper {
             fs,
             proto: SimpleFileSystemProtocol {
