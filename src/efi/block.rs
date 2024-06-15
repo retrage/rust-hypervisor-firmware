@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright © 2019 Intel Corporation
 
-use core::ffi::c_void;
+use core::{
+    ffi::c_void,
+    mem::size_of,
+    ptr::{addr_of, null_mut},
+};
 
 use r_efi::{
-    efi::{self, Status},
+    efi::{self, Handle, Status},
     protocols::{
         block_io::{Media, Protocol as BlockIoProtocol, PROTOCOL_GUID as BLOCKIO_PROTOCOL_GUID},
         device_path::{HardDriveMedia, Protocol as DevicePathProtocol},
@@ -13,6 +17,7 @@ use r_efi::{
 
 use crate::{
     block::{SectorBuf, VirtioBlockDevice},
+    efi::{Protocol, ALLOCATOR, PROTOCOL_MANAGER},
     part::{get_partitions, PartitionEntry},
 };
 
@@ -23,11 +28,13 @@ pub struct ControllerDevicePathProtocol {
     pub controller: u32,
 }
 
-#[repr(C)]
 pub struct BlockWrapper<'a> {
     block: &'a VirtioBlockDevice<'a>,
-    media: Media,
     pub proto: BlockIoProtocol,
+}
+
+#[repr(C)]
+pub struct DevicePathWrapper {
     // The ordering of these paths are very important, along with the C
     // representation as the device path "flows" from the first.
     pub controller_path: ControllerDevicePathProtocol,
@@ -49,7 +56,7 @@ pub extern "efiapi" fn read_blocks(
     let wrapper = container_of!(proto, BlockWrapper, proto);
     let wrapper = unsafe { &*wrapper };
 
-    let block_size = wrapper.media.block_size as usize;
+    let block_size = unsafe { (*wrapper.proto.media).block_size as usize };
     let blocks = size / block_size;
     let mut region = crate::mem::MemoryRegion::new(buffer as u64, size as u64);
 
@@ -57,7 +64,8 @@ pub extern "efiapi" fn read_blocks(
         use crate::block::SectorRead;
         let data = region.as_mut_slice((i * block_size) as u64, block_size as u64);
         let block = wrapper.block;
-        match block.read(wrapper.start_lba + start + i as u64, data) {
+        match block.read(0 + start + i as u64, data) {
+            // TODO
             Ok(()) => continue,
             Err(_) => {
                 return Status::DEVICE_ERROR;
@@ -78,7 +86,7 @@ pub extern "efiapi" fn write_blocks(
     let wrapper = container_of!(proto, BlockWrapper, proto);
     let wrapper = unsafe { &*wrapper };
 
-    let block_size = wrapper.media.block_size as usize;
+    let block_size = unsafe { (*wrapper.proto.media).block_size as usize };
     let blocks = size / block_size;
     let mut region = crate::mem::MemoryRegion::new(buffer as u64, size as u64);
 
@@ -86,7 +94,8 @@ pub extern "efiapi" fn write_blocks(
         use crate::block::SectorWrite;
         let data = region.as_mut_slice((i * block_size) as u64, block_size as u64);
         let block = wrapper.block;
-        match block.write(wrapper.start_lba + start + i as u64, data) {
+        match block.write(0 + start + i as u64, data) {
+            // TODO
             Ok(()) => continue,
             Err(_) => {
                 return Status::DEVICE_ERROR;
@@ -109,31 +118,9 @@ pub extern "efiapi" fn flush_blocks(proto: *mut BlockIoProtocol) -> Status {
 }
 
 impl<'a> BlockWrapper<'a> {
-    pub fn new(
-        block: &'a VirtioBlockDevice<'a>,
-        partition_number: u32,
-        start_lba: u64,
-        last_lba: u64,
-        uuid: [u8; 16],
-    ) -> BlockWrapper<'a> {
-        let last_block = (*block).get_capacity() - 1;
-
-        let mut bw = BlockWrapper {
+    pub fn new(block: &'a VirtioBlockDevice<'a>) -> BlockWrapper<'a> {
+        BlockWrapper {
             block,
-            media: Media {
-                media_id: 0,
-                removable_media: false,
-                media_present: true,
-                logical_partition: false,
-                read_only: true,
-                write_caching: false,
-                block_size: SectorBuf::len() as u32,
-                io_align: 0,
-                last_block,
-                lowest_aligned_lba: 0,
-                logical_blocks_per_physical_block: 1,
-                optimal_transfer_length_granularity: 1,
-            },
             proto: BlockIoProtocol {
                 revision: 0x0001_0000, // EFI_BLOCK_IO_PROTOCOL_REVISION
                 media: core::ptr::null(),
@@ -142,6 +129,24 @@ impl<'a> BlockWrapper<'a> {
                 write_blocks,
                 flush_blocks,
             },
+        }
+    }
+}
+
+impl super::Protocol for BlockWrapper<'_> {
+    fn as_proto(&mut self) -> *mut c_void {
+        &mut self.proto as *mut _ as *mut c_void
+    }
+}
+
+impl DevicePathWrapper {
+    fn new(
+        partition_number: u32,
+        start_lba: u64,
+        last_lba: u64,
+        uuid: [u8; 16],
+    ) -> DevicePathWrapper {
+        DevicePathWrapper {
             start_lba,
             controller_path: ControllerDevicePathProtocol {
                 device_path: DevicePathProtocol {
@@ -211,34 +216,95 @@ impl<'a> BlockWrapper<'a> {
                     },
                 ]
             },
-        };
-        bw.proto.media = &bw.media;
-        bw
+        }
+    }
+}
+
+impl super::Protocol for DevicePathWrapper {
+    fn as_proto(&mut self) -> *mut c_void {
+        &mut self.controller_path as *mut _ as *mut c_void
+    }
+}
+
+fn install_block_wrapper<'a>(
+    handle: Option<efi::Handle>,
+    block: &'a VirtioBlockDevice<'a>,
+) -> Result<efi::Handle, super::protocol::Error> {
+    let (status, address) = ALLOCATOR
+        .borrow_mut()
+        .allocate_pool(efi::LOADER_DATA, size_of::<BlockWrapper>());
+    assert!(status == Status::SUCCESS);
+
+    unsafe {
+        (address as *mut BlockWrapper).write(BlockWrapper::new(block));
+    }
+    let wrapper = unsafe { &mut *(address as *mut BlockWrapper) };
+
+    let (status, address) = ALLOCATOR
+        .borrow_mut()
+        .allocate_pool(efi::LOADER_DATA, size_of::<Media>());
+    assert!(status == Status::SUCCESS);
+
+    let last_block = (*block).get_capacity() - 1;
+
+    unsafe {
+        (address as *mut Media).write(Media {
+            media_id: 0,
+            removable_media: false,
+            media_present: true,
+            logical_partition: false,
+            read_only: true,
+            write_caching: false,
+            block_size: SectorBuf::len() as u32,
+            io_align: 0,
+            last_block,
+            lowest_aligned_lba: 0,
+            logical_blocks_per_physical_block: 1,
+            optimal_transfer_length_granularity: 1,
+        });
+    }
+    wrapper.proto.media = address as *const Media;
+
+    let handle = handle.unwrap_or(null_mut());
+    let handle_ptr = addr_of!(handle) as *mut Handle;
+
+    match PROTOCOL_MANAGER.borrow_mut().install_protocol_interface(
+        handle_ptr,
+        &BLOCKIO_PROTOCOL_GUID,
+        efi::NATIVE_INTERFACE,
+        wrapper.as_proto(),
+    ) {
+        Ok(_) => Ok(unsafe { handle_ptr.read() }),
+        Err(e) => Err(e),
     }
 }
 
 pub fn populate_block_wrappers<'a>(
+    handle: Option<efi::Handle>,
     block: &'a VirtioBlockDevice<'a>,
-) -> Result<Option<u32>, super::protocol::Error> {
+) -> Result<efi::Handle, super::protocol::Error> {
     let mut parts = [PartitionEntry::default(); 16];
 
-    super::install_protocol_wrapper(
-        &BLOCKIO_PROTOCOL_GUID,
-        BlockWrapper::new(block, 0, 0, 0, [0; 16]),
+    install_block_wrapper(handle, block)?;
+
+    // TODO: Connect device paths to the block device
+    let mut dp_handle = super::install_protocol_wrapper(
+        handle,
+        &r_efi::protocols::device_path::PROTOCOL_GUID,
+        DevicePathWrapper::new(0, 0, block.get_capacity() - 1, [0; 16]),
     )?;
 
-    let mut efi_part_id = None;
     let part_count = get_partitions(block, &mut parts).unwrap();
     for i in 0..part_count {
         let p = parts[i as usize];
         match super::install_protocol_wrapper(
-            &BLOCKIO_PROTOCOL_GUID,
-            BlockWrapper::new(block, i + 1, p.first_lba, p.last_lba, p.guid),
+            None,
+            &r_efi::protocols::device_path::PROTOCOL_GUID,
+            DevicePathWrapper::new(i + 1, p.first_lba, p.last_lba, p.guid),
         ) {
-            Ok(_) => {
-                log!("Installed block wrapper for partition {}", i + 1);
+            Ok(h) => {
                 if p.is_efi_partition() {
-                    efi_part_id = Some(i + 1);
+                    dp_handle = h;
                 }
             }
             Err(e) => {
@@ -247,5 +313,5 @@ pub fn populate_block_wrappers<'a>(
             }
         }
     }
-    Ok(efi_part_id)
+    Ok(dp_handle)
 }

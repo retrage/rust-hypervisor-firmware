@@ -359,15 +359,34 @@ pub extern "efiapi" fn load_image(
     _source_size: usize,
     image_handle: *mut Handle,
 ) -> Status {
+    log!(
+        "load_image: parent_image_handle: {:?}, device_path: {:p}, image_handle: {:p}",
+        parent_image_handle,
+        device_path,
+        image_handle
+    );
     let device_path = unsafe { &*device_path };
+    log!("load_image: device_path: {:?}", device_path);
     match &DevicePath::parse(device_path) {
         dp @ DevicePath::File(path) => {
             let path = crate::common::ascii_strip(path);
+            log!("load_image: path: {}", path);
 
-            let li = parent_image_handle as *const LoadedImageWrapper;
-            let dh = unsafe { (*li).proto.device_handle };
-            let wrapped_fs_ref = unsafe { &*(dh as *const file::FileSystemWrapper) };
-            let device_handle = wrapped_fs_ref as *const _ as Handle;
+            let fs_guid = &r_efi::protocols::simple_file_system::PROTOCOL_GUID;
+            let mut wrapped_fs = null_mut();
+            PROTOCOL_MANAGER
+                .borrow_mut()
+                .locate_protocol(fs_guid, null_mut(), &mut wrapped_fs)
+                .unwrap();
+            let wrapped_fs = wrapped_fs as *mut simple_file_system::Protocol;
+            let wrapped_fs = container_of_mut!(wrapped_fs, file::FileSystemWrapper, proto);
+            let wrapped_fs_ref = unsafe { &*wrapped_fs };
+
+            let device_handle = PROTOCOL_MANAGER
+                .borrow()
+                .locate_device_handle(fs_guid)
+                .unwrap() as Handle;
+            log!("device_handle: {:?}", device_handle);
 
             let mut file = match wrapped_fs_ref.fs.open(path) {
                 Ok(file) => file,
@@ -421,6 +440,7 @@ fn load_from_file(
     );
 
     match new_image_handle(
+        None,
         dp.generate(),
         parent_image_handle,
         device_handle,
@@ -429,6 +449,7 @@ fn load_from_file(
         entry_addr,
     ) {
         Ok(handle) => {
+            log!("load_from_file: handle: {:?}", handle);
             unsafe { *image_handle = handle };
             Status::SUCCESS
         }
@@ -441,8 +462,16 @@ pub extern "efiapi" fn start_image(
     _: *mut usize,
     _: *mut *mut Char16,
 ) -> Status {
-    let wrapped_handle = image_handle as *const LoadedImageWrapper;
-    let address = unsafe { (*wrapped_handle).entry_point };
+    log!("start_image: {:?}", image_handle);
+    let mut interface = null_mut();
+    PROTOCOL_MANAGER
+        .borrow_mut()
+        .handle_protocol(image_handle, &loaded_image::PROTOCOL_GUID, &mut interface)
+        .unwrap();
+    let loaded_image = interface as *const loaded_image::Protocol;
+    let loaded_image_wrapper = container_of!(loaded_image, LoadedImageWrapper, proto);
+    let address = unsafe { (*loaded_image_wrapper).entry_point };
+    log!("start_image: entry_point: {:#x}", address);
     let ptr = address as *const ();
     let code: extern "efiapi" fn(Handle, *mut efi::SystemTable) -> Status =
         unsafe { core::mem::transmute(ptr) };
@@ -471,6 +500,7 @@ pub extern "efiapi" fn stall(microseconds: usize) -> Status {
 }
 
 pub extern "efiapi" fn set_watchdog_timer(_: usize, _: u64, _: usize, _: *mut Char16) -> Status {
+    log!("set_watchdog_timer");
     Status::UNSUPPORTED
 }
 
@@ -643,16 +673,36 @@ pub extern "efiapi" fn locate_protocol(
 }
 
 pub extern "efiapi" fn install_multiple_protocol_interfaces(
-    _: *mut Handle,
-    _: *mut c_void,
-    _: *mut c_void,
+    handle: *mut Handle,
+    guid0: *mut c_void,
+    interface0: *mut c_void,
+    guid1: *mut c_void,
+    interface1: *mut c_void,
 ) -> Status {
     log!("install_multiple_protocol_interfaces");
-    Status::UNSUPPORTED
+    if let Err(e) = PROTOCOL_MANAGER.borrow_mut().install_protocol_interface(
+        handle,
+        guid0 as *const Guid,
+        efi::NATIVE_INTERFACE,
+        interface0,
+    ) {
+        return e.into();
+    }
+    if let Err(e) = PROTOCOL_MANAGER.borrow_mut().install_protocol_interface(
+        handle,
+        guid1 as *const Guid,
+        efi::NATIVE_INTERFACE,
+        interface1,
+    ) {
+        return e.into();
+    }
+    Status::SUCCESS
 }
 
 pub extern "efiapi" fn uninstall_multiple_protocol_interfaces(
     _: Handle,
+    _: *mut c_void,
+    _: *mut c_void,
     _: *mut c_void,
     _: *mut c_void,
 ) -> Status {
@@ -665,6 +715,7 @@ pub extern "efiapi" fn calculate_crc32(_: *mut c_void, _: usize, _: *mut u32) ->
 }
 
 pub extern "efiapi" fn copy_mem(dst: *mut c_void, src: *mut c_void, count: usize) {
+    log!("copy_mem: dst: {:p}, src: {:p}, count: {}", dst, src, count);
     unsafe { core::ptr::copy(src as *const u8, dst as *mut u8, count) }
 }
 

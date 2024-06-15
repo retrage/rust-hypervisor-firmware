@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright © 2019 Intel Corporation
 
-use core::{cell::SyncUnsafeCell, ffi::c_void, mem::size_of, ptr::null_mut};
+use core::{
+    cell::SyncUnsafeCell,
+    ffi::c_void,
+    mem::size_of,
+    ptr::{addr_of, null_mut},
+};
 
 use atomic_refcell::AtomicRefCell;
 use r_efi::{
@@ -123,6 +128,10 @@ fn populate_allocator(info: &dyn bootinfo::Info, image_address: u64, image_size:
     );
 }
 
+trait Protocol {
+    fn as_proto(&mut self) -> *mut c_void;
+}
+
 #[repr(C)]
 struct LoadedImageWrapper {
     proto: LoadedImageProtocol,
@@ -159,7 +168,14 @@ impl LoadedImageWrapper {
     }
 }
 
+impl Protocol for LoadedImageWrapper {
+    fn as_proto(&mut self) -> *mut c_void {
+        &mut self.proto as *mut _ as *mut c_void
+    }
+}
+
 fn new_image_handle(
+    handle: Option<Handle>,
     file_path: *mut r_efi::protocols::device_path::Protocol,
     parent_handle: Handle,
     device_handle: Handle,
@@ -168,6 +184,7 @@ fn new_image_handle(
     entry_addr: u64,
 ) -> Result<Handle, protocol::Error> {
     install_protocol_wrapper(
+        handle,
         &loaded_image::PROTOCOL_GUID,
         LoadedImageWrapper::new(
             file_path,
@@ -180,27 +197,57 @@ fn new_image_handle(
     )
 }
 
-pub fn install_protocol_wrapper<T>(guid: &Guid, val: T) -> Result<efi::Handle, protocol::Error> {
+fn install_protocol_wrapper<T>(
+    handle: Option<Handle>,
+    guid: &Guid,
+    val: T,
+) -> Result<efi::Handle, protocol::Error>
+where
+    T: Protocol,
+{
     let (status, address) = ALLOCATOR
         .borrow_mut()
         .allocate_pool(efi::LOADER_DATA, size_of::<T>());
     assert!(status == Status::SUCCESS);
 
-    let wrapper = address as *mut T;
     unsafe {
-        wrapper.write(val);
+        (address as *mut T).write(val);
     }
-    let handle = wrapper as *mut Handle;
+    let wrapper = unsafe { &mut *(address as *mut T) };
+    let handle = handle.unwrap_or(null_mut());
+    let handle_ptr = addr_of!(handle) as *mut Handle;
 
     match PROTOCOL_MANAGER.borrow_mut().install_protocol_interface(
-        handle,
+        handle_ptr,
         guid,
         efi::NATIVE_INTERFACE,
-        wrapper as *mut c_void,
+        wrapper.as_proto(),
     ) {
-        Ok(_) => Ok(handle as efi::Handle),
+        Ok(_) => Ok(unsafe { handle_ptr.read() }),
         Err(e) => Err(e),
     }
+}
+
+#[allow(dead_code)]
+fn add_shim_debug_vars() {
+    const SHIM_LOCK_PROTOCOL_GUID: Guid = Guid::from_fields(
+        0x605d_ab50,
+        0xe046,
+        0x4300,
+        0xab,
+        0xb6,
+        &[0x3d, 0xd8, 0x10, 0xdd, 0x8b, 0x23],
+    );
+
+    const SHIM_VERBOSE_VAR_NAME: [u16; 13] = [83, 72, 73, 77, 95, 86, 69, 82, 66, 79, 83, 69, 0];
+    const SHIM_VERBOSE_DATA: [u8; 1] = [1];
+    VARIABLES.borrow_mut().set(
+        SHIM_VERBOSE_VAR_NAME.as_ptr(),
+        &SHIM_LOCK_PROTOCOL_GUID,
+        efi::VARIABLE_BOOTSERVICE_ACCESS,
+        SHIM_VERBOSE_DATA.len(),
+        SHIM_VERBOSE_DATA.as_ptr() as *const _,
+    );
 }
 
 pub fn efi_exec<'a>(
@@ -268,12 +315,26 @@ pub fn efi_exec<'a>(
 
     populate_allocator(info, loaded_address, loaded_size);
 
-    let efi_part_id = block::populate_block_wrappers(block).unwrap();
+    // add_shim_debug_vars();
 
-    let fs_handle = file::populate_fs_wrapper(fs, efi_part_id).unwrap();
+    // Create a new handle
+    let (status, handle_addr) = ALLOCATOR
+        .borrow_mut()
+        .allocate_pool(efi::BOOT_SERVICES_DATA, size_of::<efi::Handle>());
+    assert!(status == efi::Status::SUCCESS);
+    let core_handle = Some(handle_addr as efi::Handle);
+    log!("core_handle: {:p}", core_handle.unwrap());
 
-    let stdin_handle = console::populate_stdin_wrapper().unwrap();
-    let stdout_handle = console::populate_stdout_wrapper().unwrap();
+    let dp_handle = block::populate_block_wrappers(core_handle, block).unwrap();
+    log!("dp_handle: {:p}", dp_handle);
+
+    let fs_handle = file::populate_fs_wrapper(Some(dp_handle), fs).unwrap();
+    log!("fs_handle: {:p}", fs_handle);
+
+    let stdin_handle = console::populate_stdin_wrapper(core_handle).unwrap();
+    log!("stdin_handle: {:p}", stdin_handle);
+    let stdout_handle = console::populate_stdout_wrapper(core_handle).unwrap();
+    log!("stdout_handle: {:p}", stdout_handle);
 
     let mut stdin = console::STDIN;
     let mut stdout = console::STDOUT;
@@ -294,14 +355,16 @@ pub fn efi_exec<'a>(
         .copy_from_slice(crate::efi::EFI_BOOT_PATH.as_bytes());
     let device_path = DevicePath::File(path);
     let image = new_image_handle(
+        None,
         device_path.generate(),
-        0 as Handle,
+        core_handle.unwrap(),
         fs_handle,
         loaded_address,
         loaded_size,
         address,
     )
     .unwrap();
+    log!("efi_exec: image: {:p}", image);
 
     let ptr = address as *const ();
     let code: extern "efiapi" fn(Handle, *mut efi::SystemTable) -> Status =
