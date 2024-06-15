@@ -157,13 +157,9 @@ pub extern "efiapi" fn get_variable(
     data_size: *mut usize,
     data: *mut c_void,
 ) -> Status {
-    if cfg!(feature = "efi-var") {
-        VARIABLES
-            .borrow_mut()
-            .get(variable_name, vendor_guid, attributes, data_size, data)
-    } else {
-        Status::NOT_FOUND
-    }
+    VARIABLES
+        .borrow_mut()
+        .get(variable_name, vendor_guid, attributes, data_size, data)
 }
 
 pub extern "efiapi" fn get_next_variable_name(
@@ -181,13 +177,9 @@ pub extern "efiapi" fn set_variable(
     data_size: usize,
     data: *mut c_void,
 ) -> Status {
-    if cfg!(feature = "efi-var") {
-        VARIABLES
-            .borrow_mut()
-            .set(variable_name, vendor_guid, attributes, data_size, data)
-    } else {
-        Status::UNSUPPORTED
-    }
+    VARIABLES
+        .borrow_mut()
+        .set(variable_name, vendor_guid, attributes, data_size, data)
 }
 
 pub extern "efiapi" fn get_next_high_mono_count(_: *mut u32) -> Status {
