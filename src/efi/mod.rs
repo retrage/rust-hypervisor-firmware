@@ -325,18 +325,13 @@ pub fn efi_exec<'a>(
         .allocate_pool(efi::BOOT_SERVICES_DATA, size_of::<efi::Handle>());
     assert!(status == efi::Status::SUCCESS);
     let core_handle = Some(handle_addr as efi::Handle);
-    log!("core_handle: {:p}", core_handle.unwrap());
 
     let dp_handle = block::populate_block_wrappers(core_handle, block).unwrap();
-    log!("dp_handle: {:p}", dp_handle);
 
     let fs_handle = file::populate_fs_wrapper(Some(dp_handle), fs).unwrap();
-    log!("fs_handle: {:p}", fs_handle);
 
     let stdin_handle = console::populate_stdin_wrapper(core_handle).unwrap();
-    log!("stdin_handle: {:p}", stdin_handle);
     let stdout_handle = console::populate_stdout_wrapper(core_handle).unwrap();
-    log!("stdout_handle: {:p}", stdout_handle);
 
     let mut stdin = console::STDIN;
     let mut stdout = console::STDOUT;
@@ -366,7 +361,6 @@ pub fn efi_exec<'a>(
         address,
     )
     .unwrap();
-    log!("efi_exec: image: {:p}", image);
 
     let ptr = address as *const ();
     let code: extern "efiapi" fn(Handle, *mut efi::SystemTable) -> Status =

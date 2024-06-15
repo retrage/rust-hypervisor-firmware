@@ -107,7 +107,6 @@ impl OpenProtocolData {
         controller_handle: efi::Handle,
         attributes: Option<u32>,
     ) -> bool {
-        log!("OpenProtocolData::matches: agent_handle: {:p}, controller_handle: {:p}, attributes: {:x}", agent_handle, controller_handle, attributes.unwrap_or(0));
         self.agent_handle == WrappedHandle::new(agent_handle)
             && self.controller_handle == WrappedHandle::new(controller_handle)
             && (attributes.is_none() || self.attributes == attributes.unwrap())
@@ -147,7 +146,6 @@ impl ProtocolManager {
         for (handle, protocols) in self.protocols.iter() {
             for protocol in protocols.iter() {
                 if protocol.guid == *guid {
-                    log!("locate_device_handle: {:?}", handle.as_ptr().addr());
                     return Some(handle.as_ptr().addr());
                 }
             }
@@ -156,7 +154,6 @@ impl ProtocolManager {
     }
 
     fn dump_protocols(&self) {
-        log!("dump_protocols");
         for (handle, protocols) in self.protocols.iter() {
             log!("Handle: {:p}", handle.as_ptr());
             for protocol in protocols.iter() {
@@ -187,13 +184,6 @@ impl ProtocolManager {
         interface_type: efi::InterfaceType,
         interface: *mut c_void,
     ) -> Result<(), Error> {
-        log!(
-            "install_protocol_interface: handle: {:p}, protocol_guid: {:?}, interface_type: {:?}, interface: {:p}",
-            handle,
-            unsafe { &*protocol_guid },
-            interface_type,
-            interface
-        );
         if handle.is_null() || protocol_guid.is_null() || interface_type != efi::NATIVE_INTERFACE {
             return Err(Error::InvalidParameter);
         }
@@ -205,7 +195,6 @@ impl ProtocolManager {
             assert!(status == efi::Status::SUCCESS);
             unsafe { *handle = handle_addr as efi::Handle };
         }
-        log!("handle: {:p}", unsafe { *handle });
         let handle = WrappedHandle::new(unsafe { *handle }).unwrap();
         let protocol_guid = unsafe { *protocol_guid };
         match self.protocols.get_mut(&handle) {
@@ -246,7 +235,6 @@ impl ProtocolManager {
                 Ok(())
             }
             None => {
-                log!("no handle found for handle {:?}", handle);
                 let mut protocols = Vec::new();
                 let protocol = Protocol::new(protocol_guid, NonNull::new(interface).unwrap());
                 protocols
@@ -335,7 +323,6 @@ impl ProtocolManager {
         _event: efi::Event,
         _registration: *mut efi::Handle,
     ) -> Result<(), Error> {
-        log!("register_protocol_notify");
         Err(Error::Unsupported)
     }
 
@@ -347,10 +334,6 @@ impl ProtocolManager {
         buffer_size: *mut usize,
         buffer: *mut efi::Handle,
     ) -> Result<(), Error> {
-        log!("locate_handle: search_type: {:?}, protocol_guid: {:?}, search_key: {:p}, buffer_size: {:p}, buffer: {:p}", search_type, unsafe { &*protocol_guid}, search_key, buffer_size, buffer);
-        if unsafe { *protocol_guid } == efi::protocols::device_path::PROTOCOL_GUID {
-            log!("locate_handle: device_path");
-        }
         let handles = match search_type {
             efi::ALL_HANDLES => self
                 .protocols
@@ -384,7 +367,6 @@ impl ProtocolManager {
         }
         let buffer_size = unsafe { buffer_size.as_mut().unwrap() };
         let needed_size = size_of::<efi::Handle>() * handles.len();
-        log!("needed_size: {}, buffer_size: {}", needed_size, *buffer_size);
         if *buffer_size < needed_size {
             *buffer_size = needed_size;
             return Err(Error::BufferTooSmall);
@@ -395,7 +377,6 @@ impl ProtocolManager {
         let buffer = unsafe { core::slice::from_raw_parts_mut(buffer, handles.len()) };
         for (idx, handle) in handles.iter().enumerate() {
             buffer[idx] = handle.as_ptr() as *mut c_void;
-            log!("locate_handle: buffer[{}]: {:p}", idx, buffer[idx]);
         }
         *buffer_size = needed_size;
         Ok(())
@@ -407,13 +388,6 @@ impl ProtocolManager {
         protocol_guid: *const efi::Guid,
         interface: *mut *mut c_void,
     ) -> Result<(), Error> {
-        log!(
-            "handle_protocol: handle: {:p}, protocol_guid: {:?}, interface: {:p}",
-            handle,
-            unsafe { *protocol_guid },
-            interface
-        );
-        self.dump_protocols();
         self.open_protocol(
             handle,
             protocol_guid,
@@ -448,15 +422,6 @@ impl ProtocolManager {
         controller_handle: efi::Handle,
         attributes: u32,
     ) -> Result<(), Error> {
-        log!("open_protocol: user_handle: {:p}, protocol_guid: {:?}, interface: {:p}, agent_handle: {:p}, controller_handle: {:p}, attributes: {:x}", user_handle, unsafe { *protocol_guid }, interface, agent_handle, controller_handle, attributes);
-        if user_handle.addr() == 0x2 {
-            unsafe {
-                core::arch::asm!("int3");
-            }
-        }
-        if unsafe { *protocol_guid } == efi::protocols::device_path::PROTOCOL_GUID {
-            log!("open_protocol: device_path");
-        }
         if protocol_guid.is_null() {
             return Err(Error::InvalidParameter);
         }
@@ -479,7 +444,6 @@ impl ProtocolManager {
                     if open_data.matches(agent_handle, controller_handle, Some(attributes)) {
                         open_data.open_count += 1;
                         if attributes != efi::OPEN_PROTOCOL_TEST_PROTOCOL {
-                            log!("open_protocol: interface: {:p}", prot.interface.as_ptr());
                             unsafe { *interface = prot.interface.as_ptr() };
                         }
                         return Ok(());
@@ -491,7 +455,6 @@ impl ProtocolManager {
                 if attributes != efi::OPEN_PROTOCOL_TEST_PROTOCOL {
                     unsafe { *interface = null_mut() };
                 }
-                log!("open_list is None");
                 return Err(Error::Unsupported);
             }
         };
@@ -503,12 +466,6 @@ impl ProtocolManager {
             return Ok(());
         }
 
-        log!(
-            "open_protocol: agent_handle: {:p}, controller_handle: {:p}, attributes: {:x}",
-            agent_handle,
-            controller_handle,
-            attributes
-        );
         open_list
             .push(OpenProtocolData {
                 agent_handle: WrappedHandle::new(agent_handle),
@@ -517,9 +474,7 @@ impl ProtocolManager {
                 open_count: 1,
             })
             .map_err(|_| Error::OutOfResources)?;
-        log!("open_protocol: open_list.len(): {}", open_list.len());
 
-        log!("open_protocol: interface: {:p}", prot.interface.as_ptr());
         if attributes != efi::OPEN_PROTOCOL_TEST_PROTOCOL {
             unsafe { *interface = prot.interface.as_ptr() };
         }
@@ -581,7 +536,6 @@ impl ProtocolManager {
         _remaining_device_path: *const efi::protocols::device_path::Protocol,
         _recursive: efi::Boolean,
     ) -> Result<(), Error> {
-        log!("connect_controller");
         Err(Error::Unsupported)
     }
 
@@ -591,7 +545,6 @@ impl ProtocolManager {
         _driver_image_handle: efi::Handle,
         _child_handle: efi::Handle,
     ) -> Result<(), Error> {
-        log!("disconnect_controller");
         Err(Error::Unsupported)
     }
 
@@ -635,7 +588,6 @@ impl ProtocolManager {
         _no_handles: *mut usize,
         _buffer: *mut *mut efi::Handle,
     ) -> Result<(), Error> {
-        log!("locate_handle_buffer");
         Err(Error::Unsupported)
     }
 
