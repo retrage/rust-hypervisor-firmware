@@ -11,12 +11,11 @@ use core::{
     ptr::{null_mut, NonNull},
 };
 
-use heapless::{FnvIndexMap, FnvIndexSet, Vec};
+use heapless::{FnvIndexMap, Vec};
 use r_efi::efi::{self};
 
 use crate::efi::ALLOCATOR;
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub enum Error {
     OutOfResources,
@@ -57,11 +56,6 @@ impl WrappedHandle {
     }
 
     fn as_ptr(&self) -> *const c_void {
-        self.0.as_ptr()
-    }
-
-    #[allow(dead_code)]
-    fn as_mut_ptr(&mut self) -> *mut c_void {
         self.0.as_ptr()
     }
 }
@@ -114,8 +108,6 @@ impl OpenProtocolData {
 }
 
 const MAX_PROTOCOLS: usize = 16;
-const MAX_HANDLES: usize = 16;
-// const MAX_IMAGE_HANDLES: usize = 16;
 const MAX_DEVICE_HANDLES: usize = 16;
 const MAX_OPEN_DATA: usize = 16;
 
@@ -123,8 +115,6 @@ type DeviceHandle = WrappedHandle;
 // type ImageHandle = WrappedHandle;
 
 pub struct ProtocolManager {
-    #[allow(dead_code)]
-    handles: FnvIndexSet<WrappedHandle, MAX_HANDLES>,
     protocols: FnvIndexMap<DeviceHandle, Vec<Protocol, MAX_PROTOCOLS>, MAX_DEVICE_HANDLES>,
     open_lists: FnvIndexMap<Protocol, Vec<OpenProtocolData, MAX_OPEN_DATA>, MAX_PROTOCOLS>,
 }
@@ -136,7 +126,6 @@ unsafe impl Sync for ProtocolManager {}
 impl ProtocolManager {
     pub const fn new() -> Self {
         Self {
-            handles: FnvIndexSet::new(),
             protocols: FnvIndexMap::new(),
             open_lists: FnvIndexMap::new(),
         }
@@ -153,6 +142,7 @@ impl ProtocolManager {
         None
     }
 
+    #[allow(dead_code)]
     fn dump_protocols(&self) {
         for (handle, protocols) in self.protocols.iter() {
             log!("Handle: {:p}", handle.as_ptr());
