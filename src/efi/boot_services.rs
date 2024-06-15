@@ -12,14 +12,11 @@ use r_efi::{
     protocols::{device_path::Protocol as DevicePathProtocol, loaded_image, simple_file_system},
 };
 
-#[cfg(target_arch = "riscv64")]
-use r_efi::{eficall, eficall_abi};
-
-use crate::{efi::PROTOCOL_MANAGER, fat};
-
 use super::{
-    device_path::DevicePath, file, mem_file, new_image_handle, LoadedImageWrapper, ALLOCATOR, ST,
+    device_path::DevicePath, file, mem_file, new_image_handle, LoadedImageWrapper, ALLOCATOR,
+    PROTOCOL_MANAGER, ST,
 };
+use crate::fat;
 
 pub static mut BS: SyncUnsafeCell<efi::BootServices> = SyncUnsafeCell::new(efi::BootServices {
     hdr: efi::TableHeader {
