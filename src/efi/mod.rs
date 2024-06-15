@@ -129,7 +129,9 @@ fn populate_allocator(info: &dyn bootinfo::Info, image_address: u64, image_size:
 }
 
 trait Protocol {
-    fn as_proto(&mut self) -> *mut c_void;
+    fn as_proto(&mut self) -> *mut core::ffi::c_void {
+        self as *mut _ as *mut core::ffi::c_void
+    }
 }
 
 #[repr(C)]

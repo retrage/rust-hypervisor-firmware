@@ -114,11 +114,7 @@ pub const STDIN: SimpleTextInputProtocol = SimpleTextInputProtocol {
     wait_for_key: 0 as Event,
 };
 
-impl super::Protocol for SimpleTextInputProtocol {
-    fn as_proto(&mut self) -> *mut core::ffi::c_void {
-        self as *mut _ as *mut core::ffi::c_void
-    }
-}
+impl super::Protocol for SimpleTextInputProtocol {}
 
 pub const STDOUT_OUTPUT_MODE: SimpleTextOutputMode = SimpleTextOutputMode {
     max_mode: 1,
@@ -129,11 +125,7 @@ pub const STDOUT_OUTPUT_MODE: SimpleTextOutputMode = SimpleTextOutputMode {
     cursor_visible: Boolean::FALSE,
 };
 
-impl super::Protocol for SimpleTextOutputProtocol {
-    fn as_proto(&mut self) -> *mut core::ffi::c_void {
-        self as *mut _ as *mut core::ffi::c_void
-    }
-}
+impl super::Protocol for SimpleTextOutputProtocol {}
 
 pub const STDOUT: SimpleTextOutputProtocol = SimpleTextOutputProtocol {
     reset: stdout_reset,
