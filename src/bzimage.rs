@@ -11,7 +11,7 @@ use crate::{
     mem::MemoryRegion,
 };
 
-#[derive(Debug)]
+#[derive(Debug, defmt::Format)]
 pub enum Error {
     #[allow(dead_code)]
     File(fat::Error),

@@ -2,7 +2,7 @@
 // Copyright © 2019 Intel Corporation
 
 /// Virtio related errors
-#[derive(Debug)]
+#[derive(Debug, defmt::Format)]
 pub enum Error {
     UnsupportedDevice,
     LegacyOnly,

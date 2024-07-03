@@ -13,8 +13,5 @@
   "panic-strategy": "abort",
   "code-model": "small",
   "relocation-model": "pic",
-  "target-pointer-width": "64",
-  "pre-link-args": {
-    "ld.lld": ["--script=aarch64-unknown-none.ld", "--oformat=binary"]
-  }
+  "target-pointer-width": "64"
 }

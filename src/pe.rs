@@ -10,7 +10,7 @@ pub struct Loader<'a> {
     image_size: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, defmt::Format)]
 pub enum Error {
     FileError,
     InvalidExecutable,

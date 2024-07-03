@@ -65,7 +65,7 @@ struct DriverState {
     next_head: usize,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, defmt::Format)]
 pub enum Error {
     BlockIO,
     NoDataBuf,

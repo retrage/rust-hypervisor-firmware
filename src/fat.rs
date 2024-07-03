@@ -123,7 +123,7 @@ pub struct Filesystem<'a> {
     root_cluster: u32, // FAT32 only
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, defmt::Format)]
 pub enum Error {
     Block(BlockError),
     Unsupported,

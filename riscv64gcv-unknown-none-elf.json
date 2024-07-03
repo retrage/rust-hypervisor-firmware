@@ -14,8 +14,5 @@
   "max-atomic-width": 64,
   "panic-strategy": "abort",
   "relocation-model": "static",
-  "target-pointer-width": "64",
-    "pre-link-args": {
-    "ld.lld": ["--script=riscv64gcv-unknown-none-elf.ld"]
-  }
+  "target-pointer-width": "64"
 }

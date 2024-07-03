@@ -28,7 +28,7 @@ impl Default for LoaderConfig {
 }
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, defmt::Format)]
 pub enum Error {
     File(fat::Error),
     BzImage(bzimage::Error),

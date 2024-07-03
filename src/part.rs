@@ -48,7 +48,7 @@ impl PartitionEntry {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, defmt::Format)]
 pub enum Error {
     #[allow(dead_code)]
     Block(BlockError),
