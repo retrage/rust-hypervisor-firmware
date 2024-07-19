@@ -277,14 +277,16 @@ mod tests {
         let mut file = f.open("/EFI/BOOT/BOOTX64 EFI").unwrap();
         let mut l = super::Loader::new(&mut file);
 
-        let fake_mem = unsafe {
-            let layout = alloc::Layout::from_size_align(64 * 1024 * 1024, 1024 * 1024).unwrap();
-            alloc::alloc(layout)
-        };
+        let layout = alloc::Layout::from_size_align(64 * 1024 * 1024, 1024 * 1024).unwrap();
+        let fake_mem = unsafe { alloc::alloc(layout) };
 
         let (entry, addr, size) = l.load(fake_mem as u64).expect("expect loading success");
         assert_eq!(entry, fake_mem as u64 + 0x4000);
         assert_eq!(addr, fake_mem as u64);
         assert_eq!(size, 110_592);
+
+        unsafe {
+            alloc::dealloc(fake_mem, layout);
+        }
     }
 }
