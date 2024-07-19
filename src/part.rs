@@ -183,7 +183,12 @@ pub mod tests {
     }
 
     pub fn clear_disk_path() -> PathBuf {
+        #[cfg(not(miri))]
         let mut disk_path = dirs::home_dir().unwrap();
+
+        #[cfg(miri)]
+        let mut disk_path = PathBuf::from(env!("HOME"));
+
         disk_path.push("workloads");
         disk_path.push("clear-28660-kvm.img");
 

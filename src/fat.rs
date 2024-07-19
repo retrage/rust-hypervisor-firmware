@@ -926,7 +926,12 @@ mod tests {
     fn fat_test_image_paths() -> Vec<PathBuf> {
         let images = ["fat12.img", "fat16.img", "fat32.img"];
 
+        #[cfg(not(miri))]
         let mut workload_path = dirs::home_dir().unwrap();
+
+        #[cfg(miri)]
+        let mut workload_path = PathBuf::from(env!("HOME"));
+
         workload_path.push("workloads");
 
         let mut paths = Vec::<PathBuf>::new();
