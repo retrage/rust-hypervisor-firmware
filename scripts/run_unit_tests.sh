@@ -27,4 +27,6 @@ if [ ! -f "$CLEAR_OS_IMAGE" ]; then
 fi
 
 export RUST_BACKTRACE=1
+export MIRIFLAGS="-Zmiri-disable-isolation"
+# cargo +nightly miri test || exit 1;
 cargo test || exit 1;
