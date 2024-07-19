@@ -22,12 +22,9 @@ pub unsafe fn from_cstring(addr: u64) -> &'static [u8] {
     if addr == 0 {
         return &[];
     }
-    let start = addr as *const u8;
-    let mut size: usize = 0;
-    while start.add(size).read() != 0 {
-        size += 1;
-    }
-    core::slice::from_raw_parts(start, size)
+    let start = addr as *const i8;
+    let cstr = core::ffi::CStr::from_ptr(start);
+    cstr.to_bytes()
 }
 
 pub fn ascii_strip(s: &[u8]) -> &str {
