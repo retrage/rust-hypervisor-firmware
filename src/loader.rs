@@ -119,14 +119,14 @@ fn compare_entry(file_name: &[u8], pattern: &[u8]) -> Result<bool, Error> {
         if max_depth == 0 {
             return Ok(false);
         }
-        while let Some(p) = pattern.take_first() {
+        while let Some(p) = pattern.first() {
             let f = name_iter.peek().ok_or(Error::UnterminatedString)?;
             #[cfg(test)]
             println!("{} ~ {}", *p as char, *f as char);
             match p {
                 b'\0' => return Ok(*f == b'\0'),
                 b'\\' => {
-                    match pattern.take_first() {
+                    match pattern.first() {
                         // trailing escape
                         Some(b'\0') | None => return Ok(false),
                         // no match
