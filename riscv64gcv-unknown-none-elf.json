@@ -6,7 +6,6 @@
   "eh-frame-header": false,
   "emit-debug-gdb-scripts": false,
   "features": "+m,+a,-f,+d,+c,-v",
-  "is-builtin": false,
   "linker": "rust-lld",
   "linker-flavor": "ld.lld",
   "llvm-abiname": "lp64d",
