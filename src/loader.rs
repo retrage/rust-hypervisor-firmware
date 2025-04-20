@@ -110,7 +110,7 @@ fn find_entry(fs: &fat::Filesystem, pattern: &[u8]) -> Result<[u8; 255], Error> 
 fn compare_entry(file_name: &[u8], pattern: &[u8]) -> Result<bool, Error> {
     fn compare_entry_inner<I>(
         mut name_iter: core::iter::Peekable<I>,
-        mut pattern: &[u8],
+        pattern: &[u8],
         max_depth: usize,
     ) -> Result<bool, Error>
     where
