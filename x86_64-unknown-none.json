@@ -11,7 +11,7 @@
   "linker-flavor": "ld.lld",
   "panic-strategy": "abort",
   "disable-redzone": true,
-  "features": "-mmx,-sse,+soft-float",
+  "features": "+mmx,+sse",
   "code-model": "small",
   "relocation-model": "pic",
   "pre-link-args": {
