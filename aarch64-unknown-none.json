@@ -6,7 +6,7 @@
   "disable-redzone": true,
   "features": "+strict-align,-neon,-fp-armv8",
   "linker": "rust-lld",
-  "linker-flavor": "ld.lld",
+  "linker-flavor": "gnu-lld",
   "os": "none",
   "executables": true,
   "max-atomic-width": 128,
@@ -15,6 +15,9 @@
   "relocation-model": "pic",
   "target-pointer-width": "64",
   "pre-link-args": {
-    "ld.lld": ["--script=aarch64-unknown-none.ld", "--oformat=binary"]
+    "gnu-lld": [
+      "--script=aarch64-unknown-none.ld",
+      "--oformat=binary"
+    ]
   }
 }
