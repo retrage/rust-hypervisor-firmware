@@ -1,0 +1,24 @@
+[package]
+name = "rhf_runtime"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["bin"]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
+[dependencies]
+atomic_refcell = "0.1.13"
+heapless = "0.8.0"
+log = "0.4.27"
+r-efi = { version = "5.2.0", features = ["efiapi"] }
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+x86_64 = { version = "0.15.2", default-features = false, features = [
+    "instructions",
+] }

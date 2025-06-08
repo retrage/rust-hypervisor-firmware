@@ -53,3 +53,6 @@ dirs = "6.0.0"
 rand = "0.9.1"
 ssh2 = { version = "0.9.5", features = ["vendored-openssl"] }
 tempfile = "3.20.0"
+
+[workspace]
+members = ["rhf_runtime"]
